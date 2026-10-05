@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#090d16" />
+    <meta name="description" content="Prototipo local de la central de monitoreo AEGIS LOCK" />
+    <title>AEGIS LOCK · Central de monitoreo</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/styles/main.css" />
+  </head>
+  <body>
+    <main id="login-view" class="login-view">
+      <video id="intro-video" class="intro-video" src="/media/aegis-intro.mp4" autoplay muted playsinline preload="auto" aria-hidden="true"></video>
+      <button id="intro-enter" class="intro-enter" type="button" aria-label="Iniciar o reanudar la animación de introducción"></button>
+
+      <section id="login-panel" class="login-panel" aria-labelledby="login-title" hidden>
+        <button id="login-back" class="login-back" type="button" aria-label="Volver a la pantalla de inicio">←</button>
+        <div class="login-emblem" aria-hidden="true">A</div>
+        <p class="eyebrow">AEGIS LOCK · ACCESO LOCAL</p>
+        <h1 id="login-title">Identificación</h1>
+        <p class="login-intro">Ingresa tus credenciales para abrir la central de monitoreo.</p>
+        <form id="login-form" class="login-form" autocomplete="on">
+          <label for="login-username">Usuario / correo de acceso</label>
+          <input id="login-username" name="username" type="text" autocomplete="username" placeholder="operador" required minlength="2" maxlength="254" />
+
+          <label for="login-password">Contraseña</label>
+          <input id="login-password" name="password" type="password" autocomplete="current-password" placeholder="••••••••" required minlength="4" maxlength="256" />
+
+          <p id="login-error" class="login-error" role="alert" aria-live="polite"></p>
+          <button id="login-submit" class="button button-cyan button-wide" type="submit">AUTENTICAR <span aria-hidden="true">↗</span></button>
+        </form>
+        <div id="demo-account-hint" class="demo-account-hint"><span>CUENTAS DEMO · SOLO PROTOTIPO LOCAL</span><code>Operador: operador / AegisOperador2026!</code><code>Administrador: admin / AegisAdmin2026!</code></div>
+        <div id="auth-mode-label" class="auth-mode-label"><span class="status-led led-demo"></span> PROTOTIPO · VALIDACIÓN SIMULADA</div>
+      </section>
+    </main>
+
+    <main id="dashboard-view" class="dashboard-view" hidden>
+      <header id="header-root"></header>
+      <div class="dashboard-grid">
+        <aside id="sidebar-left-root" class="sidebar sidebar-left"></aside>
+        <section id="viewport-root" class="viewport-column" aria-label="Plano y cámaras"></section>
+        <aside id="sidebar-right-root" class="sidebar sidebar-right"></aside>
+      </div>
+    </main>
+
+    <dialog id="lockdown-confirmation" class="modal lockdown-dialog" role="alertdialog" aria-modal="true" aria-labelledby="lockdown-confirmation-title" aria-describedby="lockdown-confirmation-message">
+      <div class="lockdown-alert-mark" aria-hidden="true"><svg viewBox="0 0 48 48" focusable="false"><path d="M24 5 44 41H4L24 5Z" /><path d="M24 17v11m0 6h.02" /></svg></div>
+      <p class="lockdown-eyebrow"><i></i> PROTOCOLO DE EMERGENCIA · CONFIRMACIÓN REQUERIDA</p>
+      <h2 id="lockdown-confirmation-title">¿ESTÁS SEGURO DE QUE DESEAS ACTIVAR EL MODO LOCKDOWN?</h2>
+      <p id="lockdown-confirmation-message" class="lockdown-message">Esta acción restringirá todos los accesos y bloqueará los puntos de control de inmediato.</p>
+      <p class="lockdown-dialog-note"><span class="status-led led-warning"></span> PROTOTIPO LOCAL · NO SE ENVIARÁN COMANDOS FÍSICOS</p>
+      <div class="lockdown-dialog-actions"><button id="cancel-lockdown" class="lockdown-cancel" type="button" autofocus>CANCELAR</button><button id="confirm-lockdown" class="lockdown-confirm" type="button"><span>CONFIRMAR LOCKDOWN</span><b aria-hidden="true">↗</b></button></div>
+    </dialog>
+
+    <dialog id="history-dialog" class="modal history-modal" aria-labelledby="history-title">
+      <div class="modal-heading">
+        <div><p class="eyebrow">LECTURAS RECIBIDAS DEL MODELO</p><h2 id="history-title">Historial de señal</h2></div>
+        <button class="icon-button" type="button" data-close-dialog="history-dialog" aria-label="Cerrar historial">×</button>
+      </div>
+      <div class="history-summary"><span id="history-summary-label">LECTURAS RECIBIDAS DEL MODELO</span><strong id="history-current-value">—</strong></div>
+      <div id="history-chart-wrap" class="history-chart-wrap" hidden><canvas id="history-chart" aria-label="Gráfico de lecturas recibidas"></canvas></div>
+      <p id="history-empty" class="history-empty" hidden>Modelo no conectado. El historial aparecerá cuando se reciban lecturas reales.</p>
+      <div id="history-table-wrap" class="history-table-wrap" hidden><table class="history-table"><thead><tr><th>Hora de recepción</th><th>Lectura recibida</th></tr></thead><tbody id="history-table-body"></tbody></table></div>
+    </dialog>
+
+    <dialog id="camera-dialog" class="modal camera-modal" aria-labelledby="camera-title">
+      <div class="modal-heading">
+        <div><p class="eyebrow">CCTV · SEÑAL LOCAL</p><h2 id="camera-title">Cámara seleccionada</h2></div>
+        <button class="icon-button" type="button" data-close-dialog="camera-dialog" aria-label="Cerrar reproductor">×</button>
+      </div>
+      <div class="camera-player">
+        <video id="camera-video" controls autoplay muted playsinline></video>
+        <div id="camera-no-signal" class="camera-no-signal"><span class="camera-no-signal-icon">◉</span><strong>SEÑAL EN ESPERA</strong><p>El flujo se conectará cuando esté disponible desde el gemelo digital.</p></div>
+      </div>
+      <div class="camera-player-footer"><span id="camera-modal-location">Ubicación pendiente</span><span id="camera-stream-state"><i class="status-led led-offline"></i> SIN TRANSMISIÓN</span></div>
+    </dialog>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

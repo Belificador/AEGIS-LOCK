@@ -1,0 +1,11 @@
+.sidebar-title { display: flex; min-height: 45px; align-items: center; justify-content: space-between; gap: 8px; padding: 0 2px; }
+.sidebar-title > div { min-width: 0; }
+.sidebar-kicker { display: block; margin-bottom: 4px; color: var(--aegis-accent); font: 700 6px var(--font-mono); letter-spacing: 1.4px; }
+.sidebar-title h2 { margin: 0; color: var(--aegis-text-main); font-size: 10px; font-weight: 800; letter-spacing: .65px; text-transform: uppercase; }
+.signal-status { display: inline-flex; max-width: 48%; align-items: center; gap: 6px; color: var(--aegis-text-muted); font: 700 6px var(--font-mono); letter-spacing: .25px; }
+.signal-status b { overflow: hidden; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.signal-status .status-led { width: 6px; height: 6px; }
+.metrics-stack { display: flex; flex-direction: column; gap: 10px; }
+.sidebar-chat-root { display: flex; min-height: 190px; flex: 1 1 190px; }
+@media (max-width: 1200px) { .metrics-stack { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); }.metric-card-energy { grid-column: 1 / -1; }.sidebar-chat-root { min-height: 250px; flex: 1 1 250px; } }
+@media (max-width: 780px) { .metrics-stack { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); }.metric-card-energy { grid-column: 1 / -1; }.sidebar-chat-root { min-height: 230px; flex: initial; } }

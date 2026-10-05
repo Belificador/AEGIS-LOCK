@@ -1,0 +1,23 @@
+* { box-sizing: border-box; }
+html, body { width: 100%; min-width: 320px; min-height: 100%; margin: 0; }
+html { background: var(--aegis-bg-main); }
+body {
+  overflow: hidden;
+  color: var(--aegis-text-main);
+  background: radial-gradient(ellipse at 48% -24%, rgba(36, 86, 132, 0.2), transparent 52%), var(--aegis-bg-main);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-optical-sizing: auto;
+}
+button, input, select { font: inherit; }
+button { color: inherit; }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--aegis-accent); outline-offset: 3px; }
+[hidden] { display: none !important; }
+.eyebrow { margin: 0; color: var(--aegis-accent); font-size: 9px; font-weight: 800; letter-spacing: 1.8px; }
+.mono, time, .metric-value, .event-line, .metric-unit { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.visually-hidden { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0,0,0,0) !important; white-space: nowrap !important; border: 0 !important; }
+
+.panel-card, .metric-card, .chat-panel, .viewport-panel, .login-panel, .modal {
+  backdrop-filter: blur(var(--panel-blur));
+  -webkit-backdrop-filter: blur(var(--panel-blur));
+}

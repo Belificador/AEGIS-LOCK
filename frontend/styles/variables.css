@@ -1,0 +1,40 @@
+/* AEGIS LOCK · Tactical glass design system */
+@property --aegis-accent { syntax: "<color>"; inherits: true; initial-value: #42d9ff; }
+:root {
+  --aegis-bg-main: #090d16;
+  --aegis-bg-surface: rgba(15, 23, 42, 0.66);
+  --aegis-bg-raised: rgba(24, 36, 59, 0.82);
+  --aegis-bg-header: rgba(9, 14, 25, 0.84);
+  --aegis-bg-terminal: rgba(5, 10, 19, 0.72);
+
+  --aegis-accent: #42d9ff;
+  --aegis-accent-rgb: 66, 217, 255;
+  --aegis-cyan: var(--aegis-accent);
+  --aegis-green: #00ff88;
+  --aegis-orange: #ff9900;
+  --aegis-red: #ff0055;
+  --aegis-red-deep: #d0003f;
+  --aegis-blue-steel: #5b8296;
+  --aegis-silver: #a3b1b8;
+  --aegis-border: rgba(192, 214, 255, 0.11);
+  --aegis-border-active: rgba(var(--aegis-accent-rgb), 0.7);
+  --aegis-glass: rgba(15, 23, 42, 0.6);
+  --aegis-glass-highlight: rgba(255, 255, 255, 0.055);
+  --aegis-glow: 0 0 28px rgba(var(--aegis-accent-rgb), 0.13);
+
+  --aegis-text-main: #e8f1ff;
+  --aegis-text-secondary: #aabbd2;
+  --aegis-text-muted: #71839d;
+  --aegis-text-code: #7bf4d1;
+
+  --header-height: 76px;
+  --sidebar-left-width: 320px;
+  --sidebar-right-width: 360px;
+  --chat-panel-height: 230px;
+  --panel-gap: 14px;
+  --panel-radius: 14px;
+  --panel-blur: 16px;
+  --font-ui: "Plus Jakarta Sans", Inter, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-mono: "JetBrains Mono", "IBM Plex Mono", "Fira Code", Consolas, monospace;
+  color-scheme: dark;
+}

@@ -1,0 +1,29 @@
+.aegis-header { position: relative; z-index: 5; display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 18px; padding: 0 24px; background: linear-gradient(90deg,rgba(13,21,36,.92),rgba(8,14,25,.84)); border-bottom: 1px solid var(--aegis-border); box-shadow: 0 10px 35px rgba(0,0,0,.18); backdrop-filter: blur(18px); }
+.aegis-header::after { position: absolute; right: 22px; bottom: -1px; left: 22px; height: 1px; content: ""; background: linear-gradient(90deg,transparent,rgba(var(--aegis-accent-rgb),.4),transparent); }
+.header-brand { display: flex; min-width: 0; align-items: center; gap: 15px; }
+.header-emblem { position: relative; display: grid; width: 42px; height: 42px; flex: 0 0 auto; place-items: center; color: var(--aegis-accent); background: linear-gradient(145deg,rgba(var(--aegis-accent-rgb),.13),rgba(var(--aegis-accent-rgb),.015)); border: 1px solid rgba(var(--aegis-accent-rgb),.5); border-radius: 12px; box-shadow: inset 0 0 16px rgba(var(--aegis-accent-rgb),.07),0 0 22px rgba(var(--aegis-accent-rgb),.12); font: 600 22px Georgia,serif; transform: rotate(45deg) scale(.82); }
+.header-emblem span { transform: rotate(-45deg); }
+.header-brand .eyebrow { font-size: 8px; letter-spacing: 1.8px; }
+.header-brand h1 { margin: 5px 0 0; overflow: hidden; color: var(--aegis-text-main); font-size: 12px; font-weight: 800; letter-spacing: .75px; text-overflow: ellipsis; white-space: nowrap; }
+.header-middle { display: flex; align-items: center; gap: 24px; }
+.system-state { display: flex; align-items: center; gap: 9px; color: var(--aegis-green); font-size: 9px; font-weight: 800; letter-spacing: .9px; }
+.system-state[data-mode="ALERTA"] { color: var(--aegis-orange); }
+.system-state[data-mode="LOCKDOWN"],.system-state[data-mode="EVACUACIÓN"],.system-state[data-mode="CIERRE DE JORNADA"] { color: var(--aegis-red); }
+.system-state[data-mode="NO CONECTADO"] { color: var(--aegis-text-muted); }
+.header-clock { display: flex; align-items: flex-end; flex-direction: column; gap: 3px; padding-left: 20px; border-left: 1px solid var(--aegis-border); }
+.header-clock span { color: var(--aegis-text-muted); font: 700 7px var(--font-mono); letter-spacing: 1px; }
+.header-clock time { color: var(--aegis-text-main); font-size: 15px; font-weight: 600; letter-spacing: .5px; }
+.header-user { display: flex; align-items: center; gap: 11px; }
+.profile-select { max-width: 160px; padding: 8px 28px 8px 10px; color: var(--aegis-silver); background: rgba(255,255,255,.035); border: 1px solid var(--aegis-border); border-radius: 8px; font-size: 9px; }
+.profile-select:disabled { opacity: 1; }
+.profile-label { display: block; margin-bottom: 4px; color: var(--aegis-text-muted); font: 700 7px var(--font-mono); letter-spacing: .8px; }
+.logout-button { padding: 9px 11px; color: var(--aegis-text-secondary); cursor: pointer; background: rgba(255,255,255,.025); border: 1px solid var(--aegis-border); border-radius: 8px; font-size: 8px; font-weight: 700; letter-spacing: .6px; transition: color .2s ease,border-color .2s ease,box-shadow .2s ease; }
+.logout-button:hover { color: var(--aegis-accent); border-color: rgba(var(--aegis-accent-rgb),.48); box-shadow: var(--aegis-glow); }
+.status-led { display: inline-block; width: 7px; height: 7px; flex: 0 0 auto; background: var(--aegis-text-muted); border-radius: 50%; }
+.led-normal { background: var(--aegis-green); box-shadow: 0 0 9px rgba(0,255,136,.56); }
+.led-warning { background: var(--aegis-orange); box-shadow: 0 0 9px rgba(255,153,0,.5); }
+.led-critical { background: var(--aegis-red); box-shadow: 0 0 10px rgba(255,0,85,.65); animation: led-breathe 1.6s ease-in-out infinite; }
+.led-offline { background: #8393a9; box-shadow: 0 0 8px rgba(131,147,169,.25); }
+.header-connection { display: flex; align-items: center; gap: 7px; color: var(--aegis-text-muted); font: 700 7px var(--font-mono); }
+@media (max-width: 1100px) { .header-connection { display: none; }.aegis-header { padding: 0 16px; }.header-middle { gap: 12px; } }
+@media (max-width: 780px) { .aegis-header { min-height: 72px; flex-wrap: wrap; padding: 10px 12px; }.header-brand { gap: 9px; }.header-emblem { width: 35px; height: 35px; }.header-brand h1 { max-width: 200px; font-size: 9px; }.header-brand .eyebrow { font-size: 7px; }.header-middle { gap: 9px; }.header-clock { display: none; }.header-connection { display: none; }.logout-button { font-size: 0; }.logout-button::after { content: "↪"; font-size: 15px; } }

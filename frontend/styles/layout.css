@@ -1,0 +1,39 @@
+.dashboard-view { display: grid; width: 100vw; height: 100dvh; min-height: 600px; grid-template-rows: var(--header-height) minmax(0, 1fr); opacity: 1; background: radial-gradient(ellipse at 50% 48%, rgba(24, 61, 97, .11), transparent 55%); transition: opacity .24s ease, transform .24s ease, --aegis-accent .45s ease; }
+.dashboard-grid { display: grid; min-height: 0; grid-template-columns: minmax(265px, var(--sidebar-left-width)) minmax(380px, 1fr) minmax(300px, var(--sidebar-right-width)); gap: var(--panel-gap); padding: var(--panel-gap); }
+.sidebar { display: flex; min-height: 0; flex-direction: column; gap: var(--panel-gap); }
+.viewport-column { display: grid; min-width: 0; min-height: 0; grid-template-rows: minmax(0, 1fr); }
+.sidebar-left { overflow-x: hidden; overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(var(--aegis-accent-rgb),.26) transparent; }
+.sidebar-right { min-height: 0; overflow: hidden; }
+#event-console-root { display: flex; min-height: 0; flex: 1 1 0; overflow: hidden; }
+#security-controls-root { min-height: 0; flex: 0 0 auto; overflow: auto; }
+.metric-history-scroll { min-height: 0; overflow: auto; }
+
+.dashboard-view.mode-lockdown, .dashboard-view.mode-evacuacion, .dashboard-view.mode-cierre {
+  --aegis-accent: #ff0055;
+  --aegis-accent-rgb: 255, 0, 85;
+  --aegis-glow: 0 0 34px rgba(255, 0, 85, .2);
+}
+.dashboard-view.mode-alerta { --aegis-accent: #ffad42; --aegis-accent-rgb: 255, 173, 66; }
+.dashboard-view.mode-lockdown .metric-card,
+.dashboard-view.mode-evacuacion .metric-card,
+.dashboard-view.mode-cierre .metric-card { --metric-color: var(--aegis-accent); }
+
+@media (max-width: 1200px) {
+  body { overflow: auto; }
+  .dashboard-view { height: auto; min-height: 100dvh; }
+  .dashboard-grid { grid-template-columns: minmax(240px, .82fr) minmax(360px, 1.18fr); grid-template-rows: minmax(650px, auto) auto; }
+  .sidebar-left { grid-column: 1; grid-row: 1; }
+  .viewport-column { grid-column: 2; grid-row: 1; }
+  .sidebar-right { grid-column: 1 / -1; grid-row: 2; display: grid; grid-template-columns: 1.3fr 1fr 1fr; align-items: stretch; }
+  #event-console-root { height: 260px; min-height: 260px; }
+  #security-controls-root { overflow: visible; }
+}
+@media (max-width: 780px) {
+  .dashboard-view { min-height: 100dvh; grid-template-rows: auto 1fr; }
+  .dashboard-grid { display: flex; flex-direction: column; padding: 8px; }
+  .sidebar-left { overflow: visible; }
+  .viewport-column { min-height: 500px; }
+  .sidebar-right { display: flex; min-height: 620px; overflow: visible; }
+  #event-console-root { height: 300px; min-height: 300px; flex: 0 0 300px; }
+  #security-controls-root { width: 100%; overflow: visible; }
+}
