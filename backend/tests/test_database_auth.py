@@ -1,8 +1,11 @@
+import asyncio
+
 from fastapi.testclient import TestClient
 
+from backend.config import Settings
 from backend.core.passwords import hash_password
 from backend.core.security import decode_access_token
-from backend.main import app
+from backend.main import app, health
 from backend.services.postgres_client import postgres_service
 
 
@@ -40,3 +43,16 @@ def test_demo_login_issues_role_bearing_jwt_from_postgres_user(monkeypatch) -> N
     assert body["user"] == {"id": "operador", "username": "operador", "role": "operator"}
     assert body["refresh_token"] == "opaque-refresh-token-for-tests"
     assert decode_access_token(body["access_token"])["role"] == "operator"
+
+
+def test_local_health_distinguishes_missing_database(monkeypatch) -> None:
+    from backend import main
+
+    async def unhealthy():
+        return False
+
+    monkeypatch.setattr(postgres_service, "is_healthy", unhealthy)
+    monkeypatch.setattr(main, "settings", Settings(environment="local"))
+    response = asyncio.run(health())
+    assert response.status_code == 200
+    assert response.body == b'{"status":"ok","service":"aegis-lock-api","database":"not_configured"}'

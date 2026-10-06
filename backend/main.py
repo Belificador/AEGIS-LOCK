@@ -62,6 +62,10 @@ app.include_router(telemetry.router)
 @app.get("/health", tags=["health"])
 async def health() -> JSONResponse:
     if not await postgres_service.is_healthy():
+        if settings.environment.lower() != "production" and not settings.database_url:
+            return JSONResponse(
+                content={"status": "ok", "service": "aegis-lock-api", "database": "not_configured"}
+            )
         return JSONResponse(
             status_code=503,
             content={"status": "unavailable", "service": "aegis-lock-api", "database": "unavailable"},
