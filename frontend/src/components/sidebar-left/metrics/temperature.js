@@ -17,8 +17,11 @@ export function mountTemperatureMetric(root) {
       if (event.temperature_c == null) return;
       const temperature = Number(event.temperature_c);
       metric.element.classList.toggle("is-critical", temperature > 38);
-      metric.element.classList.toggle("is-warning", temperature > 30 && temperature <= 38);
-      metric.set(temperature, "LECTURA RECIBIDA DEL MODELO", event.timestamp, "°C");
+      metric.element.classList.remove("is-warning");
+      const zone = event.zone || event.zona;
+      const status = `${temperature > 38 ? "ALERTA · TEMPERATURA ALTA" : "TEMPERATURA NORMAL"}${zone ? ` · ${zone}` : " · GLOBAL"}`;
+      metric.set(temperature, status, event.timestamp, "°C");
+      metric.element.querySelector(".metric-card-meta .status-led").className = `status-led ${temperature > 38 ? "led-critical" : "led-normal"}`;
     },
     setConnection(connected) {
       metric.setStatus(connected ? "ESPERANDO LECTURA DE TEMPERATURA" : "MODELO NO CONECTADO", connected);

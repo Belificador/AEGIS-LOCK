@@ -18,9 +18,12 @@ class Settings(BaseSettings):
     jwt_secret: str | None = Field(default=None, repr=False)
     jwt_algorithm: Literal["HS256"] = "HS256"
     access_token_minutes: int = Field(default=15, ge=1, le=1440)
+    refresh_token_days: int = Field(default=7, ge=1, le=90)
+    database_url: str | None = Field(default=None, repr=False)
+    telemetry_api_key: str | None = Field(default=None, repr=False)
+    demo_operator_password: str | None = Field(default=None, repr=False)
+    demo_admin_password: str | None = Field(default=None, repr=False)
 
-    supabase_url: str | None = None
-    supabase_key: str | None = Field(default=None, repr=False)
     allowed_origins: list[str] = Field(
         default_factory=lambda: [
             "http://localhost:5500",
@@ -65,8 +68,14 @@ class Settings(BaseSettings):
         if self.environment.lower() == "production":
             if not self.jwt_secret or len(self.jwt_secret) < 32:
                 raise ValueError("JWT_SECRET must contain at least 32 characters in production")
-            if not self.supabase_url or not self.supabase_key:
-                raise ValueError("SUPABASE_URL and SUPABASE_KEY are required in production")
+            if not self.database_url:
+                raise ValueError("DATABASE_URL is required in production")
+            if not self.telemetry_api_key or len(self.telemetry_api_key) < 32:
+                raise ValueError("TELEMETRY_API_KEY must contain at least 32 characters in production")
+            if not self.demo_operator_password or len(self.demo_operator_password) < 8:
+                raise ValueError("DEMO_OPERATOR_PASSWORD must contain at least 8 characters in production")
+            if not self.demo_admin_password or len(self.demo_admin_password) < 8:
+                raise ValueError("DEMO_ADMIN_PASSWORD must contain at least 8 characters in production")
             if any(_is_loopback_origin(origin) for origin in self.allowed_origins):
                 raise ValueError("Localhost origins are not allowed in production")
             if any(urlsplit(origin).scheme != "https" for origin in self.allowed_origins):

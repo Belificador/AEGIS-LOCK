@@ -9,6 +9,7 @@ from jose import JWTError
 
 from backend.config import get_settings
 from backend.core.security import decode_access_token
+from backend.services.postgres_client import postgres_service
 
 router = APIRouter(tags=["websocket"])
 
@@ -42,7 +43,6 @@ class ConnectionManager:
                     await client.close(code=1011)
                 except Exception:
                     pass
-
 
 manager = ConnectionManager()
 
@@ -88,6 +88,8 @@ async def dashboard_socket(websocket: WebSocket) -> None:
     await manager.add(websocket)
     try:
         await websocket.send_json({"kind": "connection", "status": "authenticated"})
+        for latest_event in await postgres_service.latest_events():
+            await websocket.send_json(latest_event)
         while True:
             # Dashboard sockets are read-only; client frames are only heartbeat/control frames.
             await websocket.receive_text()

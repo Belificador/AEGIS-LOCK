@@ -1,58 +1,101 @@
-const WS_URL = import.meta.env.VITE_WS_URL || "";
+const WS_URL = import.meta.env.VITE_WS_URL || "wss://aegis-lock-api.onrender.com/ws/dashboard";
+const RECONNECT_DELAY_MS = 5000;
 
 export class DataReceiver {
-  constructor({ onEvent, onStatus }) {
+  constructor({ onEvent, onStatus, url = WS_URL }) {
     this.onEvent = onEvent;
     this.onStatus = onStatus;
     this.socket = null;
     this.reconnectTimer = null;
     this.stopped = true;
-    this.reconnectDelay = 800;
     this.session = null;
+    this.url = url || WS_URL;
   }
 
   start(session) {
     this.session = session;
     this.stopped = false;
-    if (WS_URL && session?.access_token) this.connect();
-    else this.onStatus("MODEL_DISCONNECTED");
+    this.connect();
   }
 
   stop() {
     this.stopped = true;
     window.clearTimeout(this.reconnectTimer);
-    this.socket?.close(1000, "Session ended");
+    this.reconnectTimer = null;
+    const socket = this.socket;
     this.socket = null;
+    socket?.close(1000, "Session ended");
   }
 
   connect() {
-    if (this.stopped) return;
+    if (this.stopped || this.socket) return;
     this.onStatus("CONNECTING");
+
     try {
-      this.socket = new WebSocket(WS_URL);
-    } catch {
+      this.socket = new WebSocket(this.url);
+    } catch (error) {
+      this.onStatus("MODEL_DISCONNECTED");
+      this.onEvent({ kind: "error", detail: error.message || "No se pudo abrir el WebSocket." });
       this.scheduleReconnect();
       return;
     }
+
     const socket = this.socket;
     socket.addEventListener("open", () => {
-      socket.send(JSON.stringify({ type: "auth", token: this.session.access_token }));
-    });
-    socket.addEventListener("message", ({ data }) => {
-      try {
-        const payload = JSON.parse(data);
-        if (payload.kind === "connection") {
-          this.reconnectDelay = 800;
-          this.onStatus("WAITING_SIGNAL");
-        }
-        if (payload.kind === "telemetry" && payload.event) {
-          this.onStatus("MODEL_CONNECTED");
-        }
-        this.onEvent(payload);
-      } catch {
-        this.onEvent({ kind: "error", detail: "Evento JSON recibido con formato inválido." });
+      if (socket !== this.socket) return;
+      if (this.session?.access_token) {
+        socket.send(JSON.stringify({ type: "auth", token: this.session.access_token }));
       }
+      this.onStatus("MODEL_CONNECTED");
     });
+
+    socket.addEventListener("message", ({ data }) => {
+      if (socket !== this.socket) return;
+      let payload;
+      try {
+        payload = JSON.parse(data);
+      } catch {
+        this.onEvent({ kind: "error", detail: "El emisor envió un mensaje que no es JSON válido.", raw: data });
+        return;
+      }
+
+      if (payload?.kind === "connection") {
+        this.onStatus("MODEL_CONNECTED");
+        this.onEvent(payload);
+        return;
+      }
+
+      if (payload?.kind === "telemetry" && payload.event) {
+        this.onStatus("MODEL_CONNECTED");
+        this.onEvent({
+          kind: "telemetry",
+          event: normalizeTelemetry(payload.event),
+          alerts: Array.isArray(payload.alerts) ? payload.alerts : [],
+          raw: payload,
+        });
+        return;
+      }
+
+      if (payload?.tipo_evento || payload?.kind === "event") {
+        this.onStatus("MODEL_CONNECTED");
+        this.onEvent({ kind: "telemetry", event: normalizeTelemetry(payload), alerts: [], raw: payload });
+        return;
+      }
+
+      if (payload?.kind === "error") {
+        this.onEvent(payload);
+        return;
+      }
+
+      // Algunos emisores envuelven el esquema del evento en `event` sin kind.
+      if (payload?.event?.tipo_evento) {
+        this.onStatus("MODEL_CONNECTED");
+        this.onEvent({ kind: "telemetry", event: normalizeTelemetry(payload.event), alerts: [], raw: payload });
+        return;
+      }
+      this.onEvent({ kind: "message", raw: payload });
+    });
+
     socket.addEventListener("close", () => {
       if (this.socket !== socket) return;
       this.socket = null;
@@ -61,16 +104,46 @@ export class DataReceiver {
         this.scheduleReconnect();
       }
     });
-    socket.addEventListener("error", () => this.onStatus("MODEL_DISCONNECTED"));
+
+    socket.addEventListener("error", () => {
+      if (socket !== this.socket) return;
+      this.onStatus("MODEL_DISCONNECTED");
+      // `close` schedules the retry in browsers after the failed handshake/socket.
+      if (socket.readyState !== WebSocket.CLOSED) socket.close();
+    });
   }
 
   scheduleReconnect() {
-    if (this.stopped || this.reconnectTimer) return;
-    const delay = this.reconnectDelay;
-    this.reconnectDelay = Math.min(this.reconnectDelay * 2, 15000);
+    if (this.stopped || this.reconnectTimer !== null) return;
     this.reconnectTimer = window.setTimeout(() => {
       this.reconnectTimer = null;
       this.connect();
-    }, delay);
+    }, RECONNECT_DELAY_MS);
   }
+}
+
+export function normalizeTelemetry(input = {}) {
+  const event = { ...input };
+  const type = String(input.tipo_evento || "").trim().toLowerCase();
+  const value = input.valor && typeof input.valor === "object"
+    ? input.valor.valor ?? input.valor.value ?? input.valor.lectura ?? input.valor.celsius ?? input.valor.temperature_c ?? input.valor.count ?? input.valor.personas ?? input.valor
+    : input.valor;
+  const metadata = input.metadata && typeof input.metadata === "object" ? input.metadata : {};
+
+  if (type === "temperatura" || type === "temperature") event.temperature_c = Number(value);
+  if (type === "aforo" || type === "occupancy") event.occupancy = Number(value);
+  if (type === "voltaje" || type === "voltage") {
+    const objectValue = input.valor && typeof input.valor === "object" ? input.valor : {};
+    const voltage = objectValue.voltage_v ?? objectValue.voltage ?? objectValue.v ?? value;
+    const watts = objectValue.power_w ?? objectValue.watts ?? objectValue.w ?? metadata.power_w ?? metadata.watts;
+    event.voltage_v = Number(voltage);
+    if (watts != null && Number.isFinite(Number(watts))) event.power_kw = Number(watts) / 1000;
+    else if (objectValue.power_kw != null || metadata.power_kw != null) event.power_kw = Number(objectValue.power_kw ?? metadata.power_kw);
+  }
+
+  event.source_id ??= input.origen;
+  event.zone ??= input.zona;
+  event.timestamp ??= input.timestamp;
+  event.metadata = metadata;
+  return event;
 }

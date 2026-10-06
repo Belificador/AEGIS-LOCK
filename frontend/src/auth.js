@@ -1,6 +1,10 @@
 const SESSION_KEY = "aegis.prototype.session.v2";
-const AUTH_ENDPOINT = import.meta.env.VITE_AUTH_API_URL || "";
-import { validateDemoCredentials } from "./demo-auth.js";
+const DEFAULT_AUTH_ENDPOINT = "https://aegis-lock-api.onrender.com/api/login";
+const DEMO_AUTH = import.meta.env.DEV && import.meta.env.VITE_DEMO_AUTH === "true";
+const AUTH_ENDPOINT = DEMO_AUTH ? "" : (import.meta.env.VITE_AUTH_API_URL || DEFAULT_AUTH_ENDPOINT);
+const REFRESH_ENDPOINT = AUTH_ENDPOINT.replace(/\/(?:api\/login|api\/v1\/auth\/login)\/?$/, "/api/v1/auth/refresh");
+let activeSession = null;
+let refreshTimer = null;
 
 export function initializeAuth({ onAuthenticated }) {
   const loginView = document.querySelector("#login-view");
@@ -65,7 +69,7 @@ export function initializeAuth({ onAuthenticated }) {
       const session = AUTH_ENDPOINT
         ? await authenticateRemote(fields)
         : await authenticatePrototype(fields);
-      sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
+      saveSession(session);
       onAuthenticated(session.user, session);
     } catch (caught) {
       error.textContent = caught.message || "No se pudo validar el acceso.";
@@ -78,13 +82,23 @@ export function initializeAuth({ onAuthenticated }) {
   function restoreSession() {
     try {
       const session = JSON.parse(sessionStorage.getItem(SESSION_KEY) || "null");
-      if (session?.user && ["operator", "admin"].includes(session.user.role)) onAuthenticated(session.user, session);
+      const hasRequiredToken = !AUTH_ENDPOINT || Boolean(session?.access_token);
+      if (session?.user && ["operator", "admin"].includes(session.user.role) && hasRequiredToken) {
+        activeSession = session;
+        scheduleRefresh();
+        onAuthenticated(session.user, session);
+      } else {
+        sessionStorage.removeItem(SESSION_KEY);
+      }
     } catch {
       sessionStorage.removeItem(SESSION_KEY);
     }
   }
 
   function logout() {
+    window.clearTimeout(refreshTimer);
+    refreshTimer = null;
+    activeSession = null;
     sessionStorage.removeItem(SESSION_KEY);
     formPanel.hidden = true;
     intro.hidden = false;
@@ -101,13 +115,65 @@ export function initializeAuth({ onAuthenticated }) {
     }
   }
 
+  function saveSession(session) {
+    activeSession = session;
+    session.issued_at = Date.now();
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    scheduleRefresh();
+  }
+
+  function scheduleRefresh() {
+    window.clearTimeout(refreshTimer);
+    refreshTimer = null;
+    if (!AUTH_ENDPOINT || !activeSession?.refresh_token) return;
+    const expiresIn = Number(activeSession.expires_in) || 900;
+    const issuedAt = Number(activeSession.issued_at) || 0;
+    const refreshAt = issuedAt ? issuedAt + expiresIn * 1000 - 60_000 : Date.now() + 1000;
+    refreshTimer = window.setTimeout(refreshAccessToken, Math.max(1000, refreshAt - Date.now()));
+  }
+
+  async function refreshAccessToken() {
+    if (!activeSession?.refresh_token) return;
+    try {
+      const response = await fetch(REFRESH_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh_token: activeSession.refresh_token }),
+      });
+      const result = await response.json().catch(() => ({}));
+      const payload = result.data && typeof result.data === "object" ? result.data : result;
+      if (!response.ok) {
+        if (response.status === 401) {
+          logout();
+          window.location.reload();
+          return;
+        }
+        throw new Error("No se pudo renovar la sesión.");
+      }
+      if (typeof payload.access_token !== "string" || typeof payload.refresh_token !== "string") {
+        throw new Error("El backend devolvió una sesión incompleta.");
+      }
+      activeSession.access_token = payload.access_token;
+      activeSession.refresh_token = payload.refresh_token;
+      activeSession.expires_in = payload.expires_in;
+      activeSession.issued_at = Date.now();
+      if (payload.user) activeSession.user = payload.user;
+      sessionStorage.setItem(SESSION_KEY, JSON.stringify(activeSession));
+      scheduleRefresh();
+    } catch {
+      refreshTimer = window.setTimeout(refreshAccessToken, 30_000);
+    }
+  }
+
   restoreSession();
   return { logout };
 }
 
 async function authenticatePrototype(fields) {
+  if (!DEMO_AUTH) throw new Error("La autenticación remota no está configurada.");
   const username = String(fields.get("username") || "").trim();
   const password = String(fields.get("password") || "");
+  const { validateDemoCredentials } = await import("./demo-auth.js");
   const account = validateDemoCredentials(username, password);
   await new Promise((resolve) => window.setTimeout(resolve, 380));
   return {
@@ -132,19 +198,25 @@ async function authenticateRemote(fields) {
     throw new Error("No se pudo conectar con el endpoint de autenticación configurado.");
   }
   const result = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(result.detail || "Credenciales o perfil no válidos.");
-  const serverUser = result.user || {};
+  const payload = result.data && typeof result.data === "object" ? result.data : result;
+  if (!response.ok) throw new Error(result.detail || payload.detail || "Credenciales o perfil no válidos.");
+  const serverUser = payload.user || result.user || {};
   const role = serverUser.role;
   if (!["operator", "admin"].includes(role)) {
     throw new Error("La cuenta no tiene un perfil de Operador o Administrador asignado.");
   }
+  const accessToken = payload.access_token || payload.token || result.access_token;
+  if (typeof accessToken !== "string" || !accessToken) {
+    throw new Error("El endpoint de Render no devolvió un token de acceso.");
+  }
   return {
     demo: false,
-    access_token: result.access_token || null,
-    refresh_token: result.refresh_token || null,
+    access_token: accessToken,
+    refresh_token: payload.refresh_token || result.refresh_token || null,
+    expires_in: payload.expires_in || result.expires_in || 900,
     user: {
-      id: serverUser.id || result.sub || "authenticated-user",
-      username: serverUser.email || serverUser.username || String(fields.get("username")),
+      id: serverUser.id || payload.sub || result.sub || "authenticated-user",
+      username: serverUser.username || serverUser.email || String(fields.get("username")),
       role,
     },
   };

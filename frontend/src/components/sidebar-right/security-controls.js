@@ -18,7 +18,7 @@ export function mountSecurityControls(root, { role, onModeChange }) {
       <p class="mode-simulation-note">PROTOTIPO LOCAL · SIN CONTROL DE ACCESO FÍSICO</p>
     </section>
     <section class="panel-card selected-camera-panel" aria-labelledby="selected-camera-title">
-      <div class="panel-heading"><span id="selected-camera-title">Canales de cámara</span><small>ESPERANDO MODELO</small></div>
+      <div class="panel-heading"><span id="selected-camera-title">Canales de cámara</span><small id="camera-channel-state">ESPERANDO MODELO</small></div>
       <div class="camera-placeholder" aria-hidden="true"><i></i><span></span><span></span><span></span></div>
       <p class="camera-side-location">Modelo no conectado. Los canales aparecerán al recibir telemetría real.</p>
     </section>`;
@@ -93,7 +93,15 @@ export function mountSecurityControls(root, { role, onModeChange }) {
   }
 
   renderSchedule();
-  return { initialMode, checkSchedule, setMode(mode) {
+  return { initialMode, checkSchedule, updateCamera(event) {
+    const metadata = event.metadata || {};
+    const camera = metadata.camera && typeof metadata.camera === "object" ? metadata.camera : {};
+    const id = metadata.camera_id || metadata.cameraId || camera.id || event.valor || "EXT";
+    const location = metadata.location || metadata.ubicacion || camera.location || event.zona || "Ubicación recibida del emisor";
+    root.querySelector("#camera-channel-state").textContent = `CÁMARA ${id} · ACTIVA`;
+    root.querySelector(".camera-placeholder").hidden = true;
+    root.querySelector(".camera-side-location").textContent = `${location} · REPRODUCTOR ABIERTO`;
+  }, setMode(mode) {
     const button = root.querySelector("#lockdown-button");
     button.classList.toggle("is-lockdown", mode === "LOCKDOWN" || mode === "CIERRE DE JORNADA");
     button.querySelector(".lockdown-label").textContent = mode === "LOCKDOWN" || mode === "CIERRE DE JORNADA"

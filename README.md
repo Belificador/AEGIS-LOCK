@@ -13,8 +13,8 @@ backend/
   core/                   JWT, rate limiting, dependencias y middleware
   models/schemas.py       Validación de eventos
   routers/                Auth, telemetría, WebSocket y chat local
-  services/               Supabase, reglas y adaptador de IA local
-  sql/                    Tabla de persistencia de eventos
+  services/               PostgreSQL, reglas y adaptador de IA local
+  sql/                    Esquema PostgreSQL aplicado al iniciar
   tests/                  Reglas, JWT y flujo WebSocket
 frontend/
   index.html              Intro, login, dashboard y modales
@@ -31,16 +31,17 @@ frontend/
 
 ## Inicio rápido del prototipo
 
-La interfaz funciona en modo de demostración sin Supabase con estas cuentas;
-el perfil se obtiene de las credenciales, sin selector de rol:
+La interfaz local conserva estas cuentas de demostración; el perfil se obtiene
+del registro de cuenta y no de un rol elegido en el navegador:
 
 | Perfil | Usuario | Contraseña |
 |---|---|---|
 | Operador | `operador` | `AegisOperador2026!` |
 | Administrador | `admin` | `AegisAdmin2026!` |
 
-Son credenciales públicas de prototipo y no deben usarse como autenticación
-real. En esta etapa no se necesita una cuenta externa.
+Son credenciales públicas de prototipo y no deben usarse fuera de la presentación.
+En Render se conservan como usuarios de prueba, pero el backend verifica sus
+contraseñas y guarda únicamente hashes en PostgreSQL.
 
 ```bash
 cd frontend
@@ -59,46 +60,59 @@ métricas y los historiales permanecen vacíos y el dashboard indica
 El video está en `frontend/public/media/aegis-intro.mp4` y se sirve directamente
 desde el frontend local.
 
-### Autenticación y eventos REST/WebSocket opcionales
+### Autenticación manual y eventos REST/WebSocket
 
-Para consumir el login REST en lugar del simulado, configura:
+El formulario envía las credenciales a Aegis y obtiene el JWT que exige
+`/ws/dashboard`. Configura estos valores en el entorno de build del Static Site
+de Render (las variables `VITE_*` se incorporan al compilar):
 
 ```env
-VITE_AUTH_API_URL=http://127.0.0.1:8000/api/login
+VITE_AUTH_API_URL=https://aegis-lock-api.onrender.com/api/login
+VITE_WS_URL=wss://aegis-lock-api.onrender.com/ws/dashboard
 ```
 
-La ruta `/api/login` es alias del backend para el prototipo; también se conserva
-`/api/v1/auth/login`. El cliente no envía rol: el backend lo toma de la cuenta
-Supabase autenticada. Para telemetría WebSocket configura en `.env`:
+La ruta `/api/login` es alias de `/api/v1/auth/login`. El backend toma el rol de
+PostgreSQL; el JWT se envía en el primer frame WebSocket, nunca en la URL. Para
+apuntar al backend local, sobrescribe `VITE_WS_URL`:
 
 ```env
 VITE_WS_URL=ws://127.0.0.1:8000/ws/dashboard
 ```
 
-El frontend enviará el JWT en el primer frame de autenticación, nunca en la URL.
 Los orígenes web locales permitidos son `localhost:5500` y `127.0.0.1:5500`.
 
-## Backend opcional con Supabase
+## Backend con Render PostgreSQL
 
 ```bash
 cp backend/.env.example backend/.env
-# Edita JWT_SECRET, SUPABASE_URL y SUPABASE_KEY.
+# DATABASE_URL es opcional en local; en Render usa la Internal Database URL.
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000 --ws-max-size 1048576
 ```
 
-Usa una clave Supabase server-side en `backend/.env`; nunca la copies al
-frontend. Ejecuta `backend/sql/001_security_events.sql` en Supabase y asigna
-`app_metadata.role` (`operator` o `admin`) a las cuentas. El perfil de la sesión
-se obtiene desde Supabase, no desde un campo elegido en el navegador.
+En Render crea `DATABASE_URL`, `JWT_SECRET`, `TELEMETRY_API_KEY`,
+`DEMO_OPERATOR_PASSWORD`, `DEMO_ADMIN_PASSWORD` y `ALLOWED_ORIGINS`. Guarda como
+secretos los valores sensibles. Para las dos cuentas de prueba usa las
+contraseñas actuales de la tabla de arriba. Al iniciar, el backend crea el
+esquema y siembra los usuarios con hash scrypt; no pegues la URL de conexión en
+el frontend ni en el repositorio. `/health` comprueba también la conexión a la
+base.
+
+El simulador se conecta al relay del servidor del gemelo en `/ws/telemetry` con
+la sesión web existente. `server.js` abre el WebSocket saliente a
+`wss://aegis-lock-api.onrender.com/ws/telemetry` y manda `TELEMETRY_API_KEY` en
+el header HTTP `Authorization`; configura el mismo secreto como
+`AEGIS_TELEMETRY_API_KEY` en Render para el gemelo. La clave no se incluye en
+ningún JavaScript del navegador.
 
 El servidor FastAPI también incluye:
 
 - `/api/v1/auth/login`, `/api/v1/auth/refresh`, `/api/v1/auth/me` y alias `/api/login`.
-- `/ws/telemetry` para telemetría de operadores/admin; valida eventos, aplica
-  umbrales de temperatura (>38 °C), 0 V, intrusión y Lockdown.
+- `/ws/telemetry` para emisores autenticados por JWT o por la credencial privada
+  servidor-a-servidor; normaliza y valida sobres del gemelo, evalúa umbrales de
+  temperatura (>38 °C), 0 V, intrusión y Lockdown, y persiste en PostgreSQL.
 - `/ws/dashboard` para retransmitir eventos a clientes autenticados.
 - `POST /api/v1/chat`, listo para un modelo local OpenAI-compatible al definir
   `LOCAL_AI_URL` y `LOCAL_AI_MODEL`.
@@ -109,8 +123,10 @@ El servidor FastAPI también incluye:
   propios. Sus gráficas se alimentan solo con telemetría recibida y guardan hasta
   siete días de muestras por métrica en el almacenamiento local del navegador;
   sin historial muestran el estado de espera.
-- **Visor:** mantiene el contenedor vacío hasta recibir señal. La geometría del
-  gemelo y la ubicación real de cámaras se integrarán al conectar el modelo.
+- **Visor:** carga `models_3d/oficina/edificio.glb` en el viewport central. Las
+  alertas de temperatura, voltaje y acceso resaltan zonas identificadas por el
+  nombre de nodo del modelo o por `metadata.nodo_3d`/`metadata.node_name`; la
+  cámara seleccionada abre el feed suministrado en `metadata`.
 - **Chat:** no informa lecturas mientras el modelo está desconectado. No cambia
   claves, puertas ni luces; la IA local aún no está conectada.
 - **Lockdown, evacuación y cierre de jornada:** actualizan un estado simulado

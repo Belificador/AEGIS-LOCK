@@ -34,11 +34,11 @@ export function createCameraModal() {
     state.append(led, document.createTextNode(` ${message}`));
   }
 
-  function open(camera) {
+  function open(camera, streamUrlOverride) {
     currentCamera = camera;
     title.textContent = `Cámara ${camera.id} · ${camera.shortName}`;
     locationLabel.textContent = camera.location;
-    const streamUrl = CAMERA_STREAMS[camera.id];
+    const streamUrl = streamUrlOverride || CAMERA_STREAMS[camera.id];
     video.classList.remove("is-live");
     placeholder.hidden = false;
     video.pause();

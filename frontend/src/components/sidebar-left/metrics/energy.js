@@ -14,12 +14,18 @@ export function mountEnergyMetric(root) {
   });
   return {
     update(event) {
+      const voltage = event.voltage_v;
+      const wattsValue = event.power_kw == null ? event.metadata?.power_w ?? event.metadata?.watts : Number(event.power_kw) * 1000;
+      if (voltage != null) metric.element.classList.toggle("is-critical", Number(voltage) === 0);
       if (event.power_kw != null) {
-        const watts = Number(event.power_kw) * 1000;
-        const voltage = event.voltage_v == null ? "—" : `${event.voltage_v} V`;
-        metric.set(event.power_kw, `${voltage} · ${Math.round(watts)} W`, event.timestamp, "kW");
-      } else if (event.voltage_v != null && metric.value == null) {
-        metric.setStatus(`VOLTAJE RECIBIDO · ${event.voltage_v} V`, true);
+        const voltageLabel = voltage == null ? "— V" : `${voltage} V`;
+        metric.set(event.power_kw, `${voltageLabel} · ${Math.round(wattsValue)} W`, event.timestamp, "kW");
+        if (voltage != null) metric.element.querySelector(".metric-card-meta .status-led").className = `status-led ${Number(voltage) === 0 ? "led-critical" : "led-normal"}`;
+      } else if (voltage != null) {
+        const volts = Number(voltage);
+        const watts = wattsValue == null ? "—" : `${Math.round(Number(wattsValue))}`;
+        metric.set(volts, `${watts} W · ${volts === 0 ? "APAGÓN DETECTADO" : "ALIMENTACIÓN ACTIVA"}`, event.timestamp, "V");
+        metric.element.querySelector(".metric-card-meta .status-led").className = `status-led ${volts === 0 ? "led-critical" : "led-normal"}`;
       }
     },
     setConnection(connected) {

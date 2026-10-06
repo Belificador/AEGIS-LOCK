@@ -26,14 +26,15 @@ class UserRole(str, Enum):
 
 
 class LoginRequest(StrictModel):
-    username: Annotated[str, StringConstraints(strip_whitespace=True, min_length=3, max_length=254)]
+    username: Annotated[
+        str,
+        StringConstraints(strip_whitespace=True, min_length=3, max_length=80, pattern=r"^[\w.@:+-]+$"),
+    ]
     password: Annotated[str, StringConstraints(min_length=8, max_length=256)]
 
     @field_validator("username")
     @classmethod
-    def username_must_be_email(cls, value: str) -> str:
-        if "@" not in value or value.startswith("@") or value.endswith("@"):
-            raise ValueError("El usuario debe ser el correo asociado a Supabase Auth")
+    def normalize_username(cls, value: str) -> str:
         return value.lower()
 
 
@@ -51,7 +52,7 @@ class TokenResponse(StrictModel):
 
 class UserResponse(StrictModel):
     id: str
-    email: str
+    username: str
     role: UserRole
 
 

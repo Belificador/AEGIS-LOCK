@@ -7,12 +7,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from starlette.responses import JSONResponse
 
 from backend.config import get_settings
 from backend.core.middleware import SecurityHeadersAndSizeLimitMiddleware
 from backend.core.rate_limit import limiter
 from backend.routers import ai_chat, auth, telemetry, ws_manager
-from backend.services.supabase_client import supabase_service
+from backend.services.postgres_client import postgres_service
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 settings = get_settings()
@@ -22,9 +23,15 @@ settings = get_settings()
 async def lifespan(app: FastAPI):
     app.state.settings = settings
     app.state.latest_event = None
-    await supabase_service.connect(settings.supabase_url, settings.supabase_key)
-    yield
-    await supabase_service.close()
+    await postgres_service.connect(
+        settings.database_url,
+        operator_password=settings.demo_operator_password,
+        admin_password=settings.demo_admin_password,
+    )
+    try:
+        yield
+    finally:
+        await postgres_service.close()
 
 
 app = FastAPI(
@@ -53,5 +60,10 @@ app.include_router(telemetry.router)
 
 
 @app.get("/health", tags=["health"])
-async def health() -> dict[str, str]:
-    return {"status": "ok", "service": "aegis-lock-api"}
+async def health() -> JSONResponse:
+    if not await postgres_service.is_healthy():
+        return JSONResponse(
+            status_code=503,
+            content={"status": "unavailable", "service": "aegis-lock-api", "database": "unavailable"},
+        )
+    return JSONResponse(content={"status": "ok", "service": "aegis-lock-api", "database": "ok"})

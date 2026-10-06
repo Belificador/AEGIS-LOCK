@@ -43,6 +43,7 @@
 .mode-simulation-note { margin: 9px 0 0; color: var(--aegis-text-muted); font: 7px var(--font-mono); line-height: 1.45; text-align: center; }
 .selected-camera-panel { flex: 0 0 auto; }
 .camera-placeholder { display: flex; height: 34px; align-items: center; gap: 7px; margin: 3px 0 9px; padding: 0 9px; background: rgba(4,10,19,.45); border: 1px solid rgba(255,255,255,.04); border-radius: 7px; }
+.camera-placeholder[hidden] { display: none; }
 .camera-placeholder i { width: 20px; height: 20px; flex: 0 0 auto; background: rgba(var(--aegis-accent-rgb),.08); border: 1px solid rgba(var(--aegis-accent-rgb),.15); border-radius: 6px; }
 .camera-placeholder span { display: block; height: 5px; background: linear-gradient(90deg,rgba(var(--aegis-accent-rgb),.08),rgba(var(--aegis-accent-rgb),.25),rgba(var(--aegis-accent-rgb),.08)); background-size: 200% 100%; border-radius: 99px; animation: skeleton-shimmer 2.4s linear infinite; }
 .camera-placeholder span:nth-of-type(1) { width: 38%; }.camera-placeholder span:nth-of-type(2) { width: 21%; opacity: .65; }.camera-placeholder span:nth-of-type(3) { width: 13%; opacity: .4; }

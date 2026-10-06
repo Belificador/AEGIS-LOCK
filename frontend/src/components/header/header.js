@@ -36,9 +36,9 @@ export function mountHeader(root, { user, onLogout }) {
         MODEL_DISCONNECTED: "MODELO NO CONECTADO",
         CONNECTING: "CONECTANDO AL MODELO",
         WAITING_SIGNAL: "ESPERANDO SEÑAL",
-        MODEL_CONNECTED: "SEÑAL RECIBIDA",
+        MODEL_CONNECTED: "🟢 CONECTADO A RENDER",
       };
-      connection.lastChild.textContent = ` ${labels[status] || "MODELO NO CONECTADO"}`;
+      connection.lastChild.textContent = ` ${labels[status] || "🔴 DESCONECTADO"}`;
       led.className = `status-led ${connected ? "led-normal" : status === "CONNECTING" || status === "WAITING_SIGNAL" ? "led-warning" : "led-offline"}`;
       renderMode();
     },

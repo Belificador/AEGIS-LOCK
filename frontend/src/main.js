@@ -20,7 +20,12 @@ function showDashboard(user, session) {
     dashboardView.hidden = false;
     dashboardView.classList.remove("is-transitioning");
     dashboardUI?.destroy();
-    dashboardUI = mountDashboard({ user, session: dashboardSession, onLogout: returnToLogin });
+    dashboardUI = mountDashboard({
+      user,
+      session: dashboardSession,
+      onLogout: returnToLogin,
+      wsUrl: import.meta.env.VITE_WS_URL,
+    });
   }, 240);
 }
 
