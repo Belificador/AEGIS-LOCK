@@ -9,4 +9,6 @@
 @import url("./components/viewport.css");
 @import url("./components/sidebar-right.css");
 @import url("./components/modals.css");
+@import url("./components/admin-diagnostics.css");
+@import url("./components/critical-alert.css");
 @import url("./states.css");

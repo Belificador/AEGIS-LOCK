@@ -26,3 +26,9 @@ async def require_operator(claims: Annotated[dict[str, Any], Depends(current_cla
     if claims.get("role") not in {"admin", "operator"}:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permisos insuficientes")
     return claims
+
+
+async def require_admin(claims: Annotated[dict[str, Any], Depends(current_claims)]) -> dict[str, Any]:
+    if claims.get("role") != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Se requiere perfil Administrador")
+    return claims

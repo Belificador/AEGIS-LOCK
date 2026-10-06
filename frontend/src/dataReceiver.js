@@ -2,11 +2,15 @@ const WS_URL = import.meta.env.VITE_WS_URL || "wss://aegis-lock-api.onrender.com
 const RECONNECT_DELAY_MS = 5000;
 
 export class DataReceiver {
-  constructor({ onEvent, onStatus, url = WS_URL }) {
+  constructor({ onEvent, onStatus, onLatency = () => {}, url = WS_URL }) {
     this.onEvent = onEvent;
     this.onStatus = onStatus;
+    this.onLatency = onLatency;
     this.socket = null;
     this.reconnectTimer = null;
+    this.heartbeatTimer = null;
+    this.pendingPing = null;
+    this.pingSequence = 0;
     this.stopped = true;
     this.session = null;
     this.url = url || WS_URL;
@@ -21,7 +25,11 @@ export class DataReceiver {
   stop() {
     this.stopped = true;
     window.clearTimeout(this.reconnectTimer);
+    window.clearInterval(this.heartbeatTimer);
     this.reconnectTimer = null;
+    this.heartbeatTimer = null;
+    this.pendingPing = null;
+    this.onLatency(null);
     const socket = this.socket;
     this.socket = null;
     socket?.close(1000, "Session ended");
@@ -61,7 +69,16 @@ export class DataReceiver {
 
       if (payload?.kind === "connection") {
         this.onStatus("MODEL_CONNECTED");
+        this.startHeartbeat(socket);
         this.onEvent(payload);
+        return;
+      }
+
+      if (payload?.kind === "heartbeat" && payload.type === "pong") {
+        if (this.pendingPing?.id === payload.id) {
+          this.onLatency(performance.now() - this.pendingPing.startedAt);
+          this.pendingPing = null;
+        }
         return;
       }
 
@@ -99,6 +116,10 @@ export class DataReceiver {
     socket.addEventListener("close", () => {
       if (this.socket !== socket) return;
       this.socket = null;
+      window.clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+      this.pendingPing = null;
+      this.onLatency(null);
       if (!this.stopped) {
         this.onStatus("MODEL_DISCONNECTED");
         this.scheduleReconnect();
@@ -119,6 +140,23 @@ export class DataReceiver {
       this.reconnectTimer = null;
       this.connect();
     }, RECONNECT_DELAY_MS);
+  }
+
+  startHeartbeat(socket) {
+    window.clearInterval(this.heartbeatTimer);
+    this.pendingPing = null;
+    this.heartbeatTimer = window.setInterval(() => {
+      if (this.stopped || socket !== this.socket || socket.readyState !== WebSocket.OPEN) return;
+      if (this.pendingPing && performance.now() - this.pendingPing.startedAt < 10_000) return;
+      const id = `${Date.now()}-${++this.pingSequence}`;
+      const startedAt = performance.now();
+      this.pendingPing = { id, startedAt };
+      try {
+        socket.send(JSON.stringify({ type: "ping", id }));
+      } catch {
+        this.pendingPing = null;
+      }
+    }, 5000);
   }
 }
 

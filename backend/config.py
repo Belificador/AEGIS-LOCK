@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     telemetry_api_key: str | None = Field(default=None, repr=False)
     demo_operator_password: str | None = Field(default=None, repr=False)
     demo_admin_password: str | None = Field(default=None, repr=False)
+    gemelo_media_base_url: str = "https://gemelo-digital-bhjp.onrender.com"
+    pin_code_length: int = Field(default=4, ge=4, le=8)
+    analytics_default_days: int = Field(default=7, ge=1, le=90)
+    analytics_max_rows: int = Field(default=1000, ge=100, le=5000)
 
     allowed_origins: list[str] = Field(
         default_factory=lambda: [

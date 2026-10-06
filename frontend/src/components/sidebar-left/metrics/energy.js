@@ -19,7 +19,8 @@ export function mountEnergyMetric(root) {
       if (voltage != null) metric.element.classList.toggle("is-critical", Number(voltage) === 0);
       if (event.power_kw != null) {
         const voltageLabel = voltage == null ? "— V" : `${voltage} V`;
-        metric.set(event.power_kw, `${voltageLabel} · ${Math.round(wattsValue)} W`, event.timestamp, "kW");
+        const estimateLabel = event.metadata?.power_estimated ? " · ESTIMADO" : "";
+        metric.set(event.power_kw, `${voltageLabel} · ${Math.round(wattsValue)} W${estimateLabel}`, event.timestamp, "kW");
         if (voltage != null) metric.element.querySelector(".metric-card-meta .status-led").className = `status-led ${Number(voltage) === 0 ? "led-critical" : "led-normal"}`;
       } else if (voltage != null) {
         const volts = Number(voltage);

@@ -12,5 +12,6 @@ export function mountSidebarRight(root, options) {
     updateCamera: controls.updateCamera,
     setMode: controls.setMode,
     setConnection: events.setConnection,
+    destroy: controls.destroy,
   };
 }

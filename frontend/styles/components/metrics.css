@@ -22,9 +22,14 @@
 .metric-card-energy { --metric-color: var(--aegis-accent); --metric-rgb: var(--aegis-accent-rgb); }
 .metric-card-occupancy { --metric-color: var(--aegis-accent); --metric-rgb: var(--aegis-accent-rgb); }
 .metric-card-temperature { --metric-color: #ff754f; --metric-rgb: 255,117,79; }
+.metric-card-temperature.is-warning { --metric-color: #ff8800; --metric-rgb: 255,136,0; }
+.metric-card-temperature.is-critical { --metric-color: var(--aegis-red); --metric-rgb: 255,0,85; }
 .metric-card.is-warning .metric-value { color: var(--aegis-orange); }
 .metric-card.is-critical .metric-value { color: var(--aegis-red); }
+.metric-card-temperature.is-warning .metric-value { color: #ff8800; }
 .metric-card.is-disconnected .metric-value { color: #8293aa; }
+.metric-card-temperature.is-warning .metric-area-chart stop { stop-color: #ff8800 !important; }
+.metric-card-temperature.is-critical .metric-area-chart stop { stop-color: var(--aegis-red) !important; }
 
 .metric-visual { position: relative; z-index: 1; flex: 0 0 auto; margin-top: 8px; }
 .metric-visual-area { min-height: 78px; padding-top: 15px; }

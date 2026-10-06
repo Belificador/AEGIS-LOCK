@@ -1,4 +1,5 @@
 import { createMetricCard } from "./metric-card.js";
+import { classifyTemperature } from "./temperature-state.js";
 
 export function mountTemperatureMetric(root) {
   const metric = createMetricCard(root, {
@@ -16,12 +17,13 @@ export function mountTemperatureMetric(root) {
     update(event) {
       if (event.temperature_c == null) return;
       const temperature = Number(event.temperature_c);
-      metric.element.classList.toggle("is-critical", temperature > 38);
-      metric.element.classList.remove("is-warning");
+      const { warning, critical, description } = classifyTemperature(event);
+      metric.element.classList.toggle("is-critical", critical);
+      metric.element.classList.toggle("is-warning", warning);
       const zone = event.zone || event.zona;
-      const status = `${temperature > 38 ? "ALERTA · TEMPERATURA ALTA" : "TEMPERATURA NORMAL"}${zone ? ` · ${zone}` : " · GLOBAL"}`;
+      const status = `${description}${zone ? ` · ${zone}` : " · GLOBAL"}`;
       metric.set(temperature, status, event.timestamp, "°C");
-      metric.element.querySelector(".metric-card-meta .status-led").className = `status-led ${temperature > 38 ? "led-critical" : "led-normal"}`;
+      metric.element.querySelector(".metric-card-meta .status-led").className = `status-led ${critical ? "led-critical" : warning ? "led-warning" : "led-normal"}`;
     },
     setConnection(connected) {
       metric.setStatus(connected ? "ESPERANDO LECTURA DE TEMPERATURA" : "MODELO NO CONECTADO", connected);

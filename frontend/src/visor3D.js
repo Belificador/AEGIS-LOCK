@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { addCameraMarkers } from "./components/viewport/camera-markers.js";
 
 const MODEL_URL = new URL("../../models_3d/oficina/edificio.glb", import.meta.url).href;
 const MODEL_DISPLAY_SIZE = 16.5;
@@ -8,12 +9,17 @@ const MODEL_VIEW_FILL = 0.5;
 const MODEL_VIEW_DIRECTION = new THREE.Vector3(1, 0.55, 1).normalize();
 
 export class Visor3D {
-  constructor(container, { onLoad = () => {}, onError = () => {} } = {}) {
+  constructor(container, { onLoad = () => {}, onError = () => {}, onCameraSelected = () => {} } = {}) {
     this.container = container;
     this.onLoad = onLoad;
     this.onError = onError;
+    this.onCameraSelected = onCameraSelected;
     this.destroyed = false;
     this.zoneEvents = new Map();
+    this.cameraMarkers = null;
+    this.raycaster = new THREE.Raycaster();
+    this.pointer = new THREE.Vector2();
+    this.pointerDown = null;
     this.model = null;
     this.animationFrame = null;
     this.resizeObserver = null;
@@ -45,6 +51,26 @@ export class Visor3D {
     this.controls.maxDistance = 80;
     this.hasUserOrbit = false;
     this.controls.addEventListener("start", () => { this.hasUserOrbit = true; });
+    this._onPointerDown = (event) => {
+      if (event.button !== 0) return;
+      this.pointerDown = { id: event.pointerId, x: event.clientX, y: event.clientY };
+    };
+    this._onPointerUp = (event) => {
+      const start = this.pointerDown;
+      this.pointerDown = null;
+      if (!start || start.id !== event.pointerId || Math.hypot(event.clientX - start.x, event.clientY - start.y) > 6) return;
+      const marker = this._cameraMarkerAt(event.clientX, event.clientY);
+      if (marker) this.cameraMarkers?.select(marker);
+    };
+    this._onPointerMove = (event) => {
+      if (this.pointerDown) return;
+      this.renderer.domElement.style.cursor = this._cameraMarkerAt(event.clientX, event.clientY) ? "pointer" : "grab";
+    };
+    this._onPointerCancel = () => { this.pointerDown = null; };
+    this.renderer.domElement.addEventListener("pointerdown", this._onPointerDown);
+    this.renderer.domElement.addEventListener("pointerup", this._onPointerUp);
+    this.renderer.domElement.addEventListener("pointermove", this._onPointerMove);
+    this.renderer.domElement.addEventListener("pointercancel", this._onPointerCancel);
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(container);
@@ -90,6 +116,9 @@ export class Visor3D {
       this.model.position.sub(scaledCenter);
       this.model.updateMatrixWorld(true);
       this.scene.add(this.model);
+      this.cameraMarkers = addCameraMarkers(THREE, this.model, MODEL_DISPLAY_SIZE / maxDimension, (camera) => {
+        this.onCameraSelected(camera);
+      });
       this.applyZoneEvents();
       this.resize();
       this.onLoad();
@@ -136,6 +165,18 @@ export class Visor3D {
         }
       }
     }
+  }
+
+  _cameraMarkerAt(clientX, clientY) {
+    if (!this.cameraMarkers?.targets.length) return null;
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    if (!rect.width || !rect.height) return null;
+    this.pointer.set(
+      ((clientX - rect.left) / rect.width) * 2 - 1,
+      -((clientY - rect.top) / rect.height) * 2 + 1,
+    );
+    this.raycaster.setFromCamera(this.pointer, this.camera);
+    return this.raycaster.intersectObjects(this.cameraMarkers.targets, false)[0]?.object ?? null;
   }
 
   resize() {
@@ -193,7 +234,12 @@ export class Visor3D {
     this.destroyed = true;
     window.cancelAnimationFrame(this.animationFrame);
     this.resizeObserver?.disconnect();
+    this.renderer.domElement.removeEventListener("pointerdown", this._onPointerDown);
+    this.renderer.domElement.removeEventListener("pointerup", this._onPointerUp);
+    this.renderer.domElement.removeEventListener("pointermove", this._onPointerMove);
+    this.renderer.domElement.removeEventListener("pointercancel", this._onPointerCancel);
     this.controls.dispose();
+    this.cameraMarkers?.dispose();
     this.model?.traverse((node) => {
       if (!node.isMesh) return;
       node.geometry.dispose();

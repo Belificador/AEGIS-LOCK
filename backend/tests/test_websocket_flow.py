@@ -56,3 +56,19 @@ def test_server_relay_ingests_validates_alerts_and_broadcasts(monkeypatch) -> No
         assert acknowledgement["kind"] == "ack"
         assert acknowledgement["persisted"] is True
         assert events[0][0]["tipo_evento"] == "temperatura"
+
+
+def test_dashboard_websocket_echoes_heartbeat_round_trip() -> None:
+    token, _ = create_access_token(subject="operator-1", role="operator")
+    with TestClient(app) as client:
+        with client.websocket_connect(
+            "/ws/dashboard", headers={"origin": "http://localhost:5500"}
+        ) as dashboard:
+            dashboard.send_json({"type": "auth", "token": token})
+            assert dashboard.receive_json() == {"kind": "connection", "status": "authenticated"}
+            dashboard.send_json({"type": "ping", "id": "ping-test-1"})
+            pong = dashboard.receive_json()
+            assert pong["kind"] == "heartbeat"
+            assert pong["type"] == "pong"
+            assert pong["id"] == "ping-test-1"
+            assert isinstance(pong["server_time"], int)

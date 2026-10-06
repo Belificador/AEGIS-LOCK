@@ -8,7 +8,8 @@
 .header-middle { display: flex; align-items: center; gap: 24px; }
 .system-state { display: flex; align-items: center; gap: 9px; color: var(--aegis-green); font-size: 9px; font-weight: 800; letter-spacing: .9px; }
 .system-state[data-mode="ALERTA"] { color: var(--aegis-orange); }
-.system-state[data-mode="LOCKDOWN"],.system-state[data-mode="EVACUACIÓN"],.system-state[data-mode="CIERRE DE JORNADA"] { color: var(--aegis-red); }
+.system-state[data-mode="LOCKDOWN"],.system-state[data-mode="CIERRE DE JORNADA"] { color: var(--aegis-red); }
+.system-state[data-mode="EVACUACIÓN"] { color: #ff8800; animation: evacuation-strobe .62s steps(2,end) infinite; text-shadow: 0 0 14px rgba(255,136,0,.52); }
 .system-state[data-mode="NO CONECTADO"] { color: var(--aegis-text-muted); }
 .header-clock { display: flex; align-items: flex-end; flex-direction: column; gap: 3px; padding-left: 20px; border-left: 1px solid var(--aegis-border); }
 .header-clock span { color: var(--aegis-text-muted); font: 700 7px var(--font-mono); letter-spacing: 1px; }
@@ -25,5 +26,13 @@
 .led-critical { background: var(--aegis-red); box-shadow: 0 0 10px rgba(255,0,85,.65); animation: led-breathe 1.6s ease-in-out infinite; }
 .led-offline { background: #8393a9; box-shadow: 0 0 8px rgba(131,147,169,.25); }
 .header-connection { display: flex; align-items: center; gap: 7px; color: var(--aegis-text-muted); font: 700 7px var(--font-mono); }
+.network-latency { padding: 5px 7px; color: #8491a6; background: rgba(255,255,255,.025); border: 1px solid rgba(255,255,255,.08); border-radius: 6px; font: 700 7px var(--font-mono); white-space: nowrap; }
+.network-latency::before { content: "●"; margin-right: 5px; color: currentColor; }
+.network-latency[data-quality="good"] { color: #00ff88; border-color: rgba(0,255,136,.3); }
+.network-latency[data-quality="warning"] { color: #ffad42; border-color: rgba(255,173,66,.4); }
+.network-latency[data-quality="critical"] { color: #ff3159; border-color: rgba(255,49,89,.48); animation: latency-pulse .75s steps(2,end) infinite; }
+.network-latency[data-quality="offline"] { color: var(--aegis-text-muted); }
+@keyframes evacuation-strobe { 50% { opacity: .48; filter: brightness(1.35); } }
+@keyframes latency-pulse { 50% { opacity: .56; } }
 @media (max-width: 1100px) { .header-connection { display: none; }.aegis-header { padding: 0 16px; }.header-middle { gap: 12px; } }
 @media (max-width: 780px) { .aegis-header { min-height: 72px; flex-wrap: wrap; padding: 10px 12px; }.header-brand { gap: 9px; }.header-emblem { width: 35px; height: 35px; }.header-brand h1 { max-width: 200px; font-size: 9px; }.header-brand .eyebrow { font-size: 7px; }.header-middle { gap: 9px; }.header-clock { display: none; }.header-connection { display: none; }.logout-button { font-size: 0; }.logout-button::after { content: "↪"; font-size: 15px; } }

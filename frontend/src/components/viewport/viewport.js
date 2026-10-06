@@ -1,6 +1,4 @@
-import { createCameraModal } from "./camera-modal.js";
-
-export function mountViewport(root) {
+export function mountViewport(root, { onCameraSelected } = {}) {
   root.innerHTML = `
     <section class="viewport-panel" aria-labelledby="twin-title">
       <header class="viewport-heading">
@@ -37,13 +35,13 @@ export function mountViewport(root) {
   const signalHud = root.querySelector("#signal-hud");
   const signalType = root.querySelector("#signal-type");
   const timestamp = root.querySelector("#signal-timestamp");
-  const cameraModal = createCameraModal();
   let visor = null;
   let destroyed = false;
   const pendingEvents = [];
   import("../../visor3D.js").then(({ Visor3D }) => {
     if (destroyed) return;
     visor = new Visor3D(root.querySelector("#visor3d-container"), {
+      onCameraSelected,
       onLoad() {
         loading.hidden = true;
         stage.setAttribute("aria-busy", "false");
@@ -81,19 +79,6 @@ export function mountViewport(root) {
       hour: "2-digit", minute: "2-digit", second: "2-digit",
     }).format(date);
 
-    if (String(event.tipo_evento).toLowerCase() === "camera_selected") openCameraFeed(event);
-  }
-
-  function openCameraFeed(event) {
-    const metadata = event.metadata || {};
-    const camera = metadata.camera && typeof metadata.camera === "object" ? metadata.camera : {};
-    const id = metadata.camera_id || metadata.cameraId || camera.id || event.valor?.camera_id || event.valor || "EXT";
-    const feed = metadata.feed_url || metadata.stream_url || metadata.video_url || metadata.camera_feed_url || metadata.video_feed || metadata.feed || metadata.url || metadata.ruta_feed || metadata.ruta_video || metadata.ruta || camera.feed_url || camera.url;
-    cameraModal.open({
-      id: String(id),
-      shortName: metadata.name || metadata.nombre || camera.name || event.zona || "SELECCIONADA",
-      location: metadata.location || metadata.ubicacion || camera.location || event.zona || "Ubicación recibida del emisor",
-    }, typeof feed === "string" ? feed : undefined);
   }
 
   function setIntrusionAlert(zone) {
@@ -107,15 +92,21 @@ export function mountViewport(root) {
     else pendingEvents.push(event);
   }
 
+  function clearIntrusionAlert() {
+    window.clearTimeout(intrusionTimer);
+    intrusionTimer = null;
+    stage.classList.remove("is-intrusion-alert");
+  }
+
   setConnection(false);
   return {
     setConnection,
     update,
     setIntrusionAlert,
+    clearIntrusionAlert,
     destroy() {
       destroyed = true;
-      window.clearTimeout(intrusionTimer);
-      cameraModal.dispose();
+      clearIntrusionAlert();
       visor?.destroy();
     },
   };

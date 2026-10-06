@@ -8,10 +8,15 @@
 #security-controls-root { min-height: 0; flex: 0 0 auto; overflow: auto; }
 .metric-history-scroll { min-height: 0; overflow: auto; }
 
-.dashboard-view.mode-lockdown, .dashboard-view.mode-evacuacion, .dashboard-view.mode-cierre {
+.dashboard-view.mode-lockdown, .dashboard-view.mode-cierre {
   --aegis-accent: #ff0055;
   --aegis-accent-rgb: 255, 0, 85;
   --aegis-glow: 0 0 34px rgba(255, 0, 85, .2);
+}
+.dashboard-view.mode-evacuacion {
+  --aegis-accent: #ff8800;
+  --aegis-accent-rgb: 255, 136, 0;
+  --aegis-glow: 0 0 34px rgba(255, 136, 0, .24);
 }
 .dashboard-view.mode-alerta { --aegis-accent: #ffad42; --aegis-accent-rgb: 255, 173, 66; }
 .dashboard-view.mode-lockdown .metric-card,

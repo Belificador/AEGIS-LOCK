@@ -29,6 +29,10 @@ def parse_telemetry(raw: dict[str, Any]) -> tuple[TelemetryEvent, dict[str, Any]
     }
     if raw.get("timestamp") is not None:
         normalized["timestamp"] = raw["timestamp"]
+    if raw.get("energy_kwh") is not None:
+        normalized["energy_kwh"] = raw["energy_kwh"]
+    elif metadata.get("energy_kwh") is not None:
+        normalized["energy_kwh"] = metadata["energy_kwh"]
 
     if event_type in _TEMPERATURE_TYPES:
         normalized["temperature_c"] = _numeric_value(

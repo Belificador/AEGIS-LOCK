@@ -93,6 +93,7 @@ uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000 --ws-max-size 104
 ```
 
 En Render crea `DATABASE_URL`, `JWT_SECRET`, `TELEMETRY_API_KEY`,
+`GEMELO_MEDIA_BASE_URL`,
 `DEMO_OPERATOR_PASSWORD`, `DEMO_ADMIN_PASSWORD` y `ALLOWED_ORIGINS`. Guarda como
 secretos los valores sensibles. Para las dos cuentas de prueba usa las
 contraseñas actuales de la tabla de arriba. Al iniciar, el backend crea el
@@ -107,13 +108,22 @@ el header HTTP `Authorization`; configura el mismo secreto como
 `AEGIS_TELEMETRY_API_KEY` en Render para el gemelo. La clave no se incluye en
 ningún JavaScript del navegador.
 
+Los feeds se sirven desde el gemelo con una firma HMAC temporal verificada en
+Node; los archivos de `/assets/cameras` siguen protegidos y no se exponen como
+una carpeta pública.
+
 El servidor FastAPI también incluye:
 
 - `/api/v1/auth/login`, `/api/v1/auth/refresh`, `/api/v1/auth/me` y alias `/api/login`.
+- `/api/v1/pins/generate`, `/api/v1/pins`, `/api/v1/pins/{id}`, `/api/v1/pins/doors` y validación interna de PINes temporales; Admin gestiona PINes, el Node del gemelo los valida y PostgreSQL conserva su hash/cifrado y vencimiento.
+- `/api/v1/analytics/history`, `/api/v1/analytics/errors` y `/api/v1/audit`, protegidas según rol; Admin ve picos, errores y auditoría.
+- `/api/v1/cameras/{camera_id}/feed-url` genera URLs HMAC temporales; el video sigue servido por el gemelo sin hacer pública la carpeta de cámaras.
+- `target_user` en un PIN es metadato de asignación/auditoría; el teclado de puerta actual identifica el PIN, no a la persona.
 - `/ws/telemetry` para emisores autenticados por JWT o por la credencial privada
   servidor-a-servidor; normaliza y valida sobres del gemelo, evalúa umbrales de
   temperatura (>38 °C), 0 V, intrusión y Lockdown, y persiste en PostgreSQL.
-- `/ws/dashboard` para retransmitir eventos a clientes autenticados.
+- `/ws/dashboard` para retransmitir eventos a clientes autenticados y medir RTT
+  con ping/pong de aplicación.
 - `POST /api/v1/chat`, listo para un modelo local OpenAI-compatible al definir
   `LOCAL_AI_URL` y `LOCAL_AI_MODEL`.
 
@@ -123,10 +133,14 @@ El servidor FastAPI también incluye:
   propios. Sus gráficas se alimentan solo con telemetría recibida y guardan hasta
   siete días de muestras por métrica en el almacenamiento local del navegador;
   sin historial muestran el estado de espera.
-- **Visor:** carga `models_3d/oficina/edificio.glb` en el viewport central. Las
-  alertas de temperatura, voltaje y acceso resaltan zonas identificadas por el
-  nombre de nodo del modelo o por `metadata.nodo_3d`/`metadata.node_name`; la
-  cámara seleccionada abre el feed suministrado en `metadata`.
+- **Visor:** carga `models_3d/oficina/edificio.glb`, destaca zonas al recibir
+  eventos y permite seleccionar marcadores 3D de las nueve cámaras del gemelo.
+  Sus posiciones se mantienen en una tabla ajustable por zona/navgrid.
+- **Alarma:** PIN denegado, intrusión, 0 V y temperatura crítica muestran un
+  overlay rojo con sonido. El acuse detiene la alarma y registra al operador en
+  PostgreSQL.
+- **Diagnóstico Admin:** incluye picos de temperatura y potencia/energía
+  estimada, desconexiones/403 de la caja negra y gestión de PINes temporales.
 - **Chat:** no informa lecturas mientras el modelo está desconectado. No cambia
   claves, puertas ni luces; la IA local aún no está conectada.
 - **Lockdown, evacuación y cierre de jornada:** actualizan un estado simulado

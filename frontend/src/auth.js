@@ -3,6 +3,7 @@ const DEFAULT_AUTH_ENDPOINT = "https://aegis-lock-api.onrender.com/api/login";
 const DEMO_AUTH = import.meta.env.DEV && import.meta.env.VITE_DEMO_AUTH === "true";
 const AUTH_ENDPOINT = DEMO_AUTH ? "" : (import.meta.env.VITE_AUTH_API_URL || DEFAULT_AUTH_ENDPOINT);
 const REFRESH_ENDPOINT = AUTH_ENDPOINT.replace(/\/(?:api\/login|api\/v1\/auth\/login)\/?$/, "/api/v1/auth/refresh");
+import { primeAlertAudio } from "./components/sidebar-right/critical-alert.js";
 let activeSession = null;
 let refreshTimer = null;
 
@@ -61,6 +62,7 @@ export function initializeAuth({ onAuthenticated }) {
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
+    primeAlertAudio();
     error.textContent = "";
     button.disabled = true;
     button.classList.add("is-busy");

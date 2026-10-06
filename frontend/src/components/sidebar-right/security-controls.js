@@ -19,7 +19,10 @@ export function mountSecurityControls(root, { role, onModeChange }) {
     </section>
     <section class="panel-card selected-camera-panel" aria-labelledby="selected-camera-title">
       <div class="panel-heading"><span id="selected-camera-title">Canales de cámara</span><small id="camera-channel-state">ESPERANDO MODELO</small></div>
-      <div class="camera-placeholder" aria-hidden="true"><i></i><span></span><span></span><span></span></div>
+      <div class="selected-camera-player">
+        <video id="selected-camera-video" controls autoplay muted playsinline crossorigin="anonymous" hidden></video>
+        <div class="camera-placeholder" aria-hidden="true"><i></i><span></span><span></span><span></span></div>
+      </div>
       <p class="camera-side-location">Modelo no conectado. Los canales aparecerán al recibir telemetría real.</p>
     </section>`;
 
@@ -31,6 +34,18 @@ export function mountSecurityControls(root, { role, onModeChange }) {
   const cancelLockdown = lockdownDialog.querySelector("#cancel-lockdown");
   const confirmLockdown = lockdownDialog.querySelector("#confirm-lockdown");
   const lockdownButton = root.querySelector("#lockdown-button");
+  const evacuationButton = root.querySelector("#evacuation-button");
+  const cameraVideo = root.querySelector("#selected-camera-video");
+  const cameraPlaceholder = root.querySelector(".camera-placeholder");
+  let selectedCameraId = null;
+  cameraVideo.addEventListener("canplay", () => {
+    root.querySelector("#camera-channel-state").textContent = `CÁMARA ${selectedCameraId} · EN VIVO`;
+    root.querySelector(".camera-side-location").textContent = `${root.querySelector(".camera-side-location").dataset.location || ""} · TRANSMISIÓN DISPONIBLE`;
+  });
+  cameraVideo.addEventListener("error", () => {
+    root.querySelector("#camera-channel-state").textContent = `CÁMARA ${selectedCameraId || "—"} · SIN SEÑAL`;
+    root.querySelector(".camera-side-location").textContent = "El feed asignado no está disponible.";
+  });
   let schedule = readSchedule();
   let initialMode = readMode();
 
@@ -40,7 +55,7 @@ export function mountSecurityControls(root, { role, onModeChange }) {
     lockdownDialog.close("confirm");
     setMode("LOCKDOWN", "ACTIVACIÓN MANUAL");
   });
-  root.querySelector("#evacuation-button").addEventListener("click", () => {
+  evacuationButton.addEventListener("click", () => {
     if (window.confirm("¿Activar el estado de evacuación simulado? No se enviará ningún comando físico.")) setMode("EVACUACIÓN", "ACTIVACIÓN MANUAL");
   });
   toggle.addEventListener("click", () => {
@@ -93,20 +108,44 @@ export function mountSecurityControls(root, { role, onModeChange }) {
   }
 
   renderSchedule();
-  return { initialMode, checkSchedule, updateCamera(event) {
+
+  function updateCamera(event) {
     const metadata = event.metadata || {};
     const camera = metadata.camera && typeof metadata.camera === "object" ? metadata.camera : {};
     const id = metadata.camera_id || metadata.cameraId || camera.id || event.valor || "EXT";
     const location = metadata.location || metadata.ubicacion || camera.location || event.zona || "Ubicación recibida del emisor";
-    root.querySelector("#camera-channel-state").textContent = `CÁMARA ${id} · ACTIVA`;
-    root.querySelector(".camera-placeholder").hidden = true;
-    root.querySelector(".camera-side-location").textContent = `${location} · REPRODUCTOR ABIERTO`;
+    const feedUrl = metadata.feed_url || metadata.stream_url || metadata.video_url || metadata.feed;
+    selectedCameraId = id;
+    const locationNode = root.querySelector(".camera-side-location");
+    locationNode.dataset.location = location;
+    root.querySelector("#camera-channel-state").textContent = `CÁMARA ${id} · ${feedUrl ? "CONECTANDO" : "SIN VIDEO"}`;
+    locationNode.textContent = `${location} · ${feedUrl ? "CONECTANDO AL FEED" : "SIN VIDEO ASIGNADO"}`;
+    cameraVideo.pause();
+    cameraVideo.removeAttribute("src");
+    cameraVideo.hidden = !feedUrl;
+    cameraPlaceholder.hidden = Boolean(feedUrl);
+    if (feedUrl) {
+      cameraVideo.src = feedUrl;
+      cameraVideo.load();
+      cameraVideo.play().catch(() => {});
+    }
+  }
+
+  return { initialMode, checkSchedule, updateCamera, destroy() {
+    cameraVideo.pause();
+    cameraVideo.removeAttribute("src");
+    cameraVideo.load();
   }, setMode(mode) {
     const button = root.querySelector("#lockdown-button");
     button.classList.toggle("is-lockdown", mode === "LOCKDOWN" || mode === "CIERRE DE JORNADA");
     button.querySelector(".lockdown-label").textContent = mode === "LOCKDOWN" || mode === "CIERRE DE JORNADA"
       ? "LOCKDOWN SIMULADO ACTIVO"
       : "ACTIVAR MODO LOCKDOWN";
+    evacuationButton.classList.toggle("is-evacuating", mode === "EVACUACIÓN");
+    evacuationButton.setAttribute("aria-pressed", String(mode === "EVACUACIÓN"));
+    evacuationButton.querySelector("span:last-child").textContent = mode === "EVACUACIÓN"
+      ? "MODO EVACUACIÓN ACTIVO"
+      : "ACTIVAR MODO / EVACUACIÓN";
   } };
 }
 
