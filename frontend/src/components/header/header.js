@@ -1,7 +1,7 @@
 export function mountHeader(root, { user, onLogout, onOpenAdmin }) {
   root.className = "aegis-header";
   root.innerHTML = `
-    <div class="header-brand"><div class="header-emblem" aria-hidden="true"><span>A</span></div><div><p class="eyebrow">AEGIS LOCK · CONTROL TÁCTICO</p><h1>CENTRAL DE MONITOREO - AEGIS LOCK</h1></div></div>
+    <div class="header-brand"><img class="header-emblem" src="/media/aegis-logo-layer2.png" alt="" aria-hidden="true" /><div><p class="eyebrow">AEGIS LOCK · CONTROL TÁCTICO</p><h1>CENTRAL DE MONITOREO - AEGIS LOCK</h1></div></div>
     <div class="header-middle"><div id="global-mode" class="system-state" data-mode="NO CONECTADO"><i class="status-led led-offline"></i><span>MODELO NO CONECTADO</span></div><div class="header-clock"><span>HORA LOCAL</span><time id="dashboard-clock">--:--:--</time></div></div>
     <div class="header-user"><div><label class="profile-label" for="profile-select">PERFIL DETECTADO</label><select id="profile-select" class="profile-select" disabled></select></div>${user.role === "admin" ? '<button id="admin-diagnostics-button" class="admin-diagnostics-button" type="button">ANALÍTICA</button>' : ""}<span id="network-latency" class="network-latency" data-quality="offline" aria-live="polite">— ms</span><span id="connection-state" class="header-connection"><i class="status-led led-offline"></i> MODELO NO CONECTADO</span><button id="logout-button" class="logout-button" type="button">CERRAR SESIÓN</button></div>`;
 

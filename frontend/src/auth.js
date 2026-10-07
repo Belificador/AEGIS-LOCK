@@ -16,34 +16,36 @@ export function initializeAuth({ onAuthenticated }) {
   const button = document.querySelector("#login-submit");
   const video = document.querySelector("#intro-video");
   const modeLabel = document.querySelector("#auth-mode-label");
-  let introVideoReady = video.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA && !video.error;
-
   if (AUTH_ENDPOINT) {
     modeLabel.innerHTML = '<span class="status-led led-normal"></span> AUTENTICACIÓN REST CONFIGURADA';
     document.querySelector("#demo-account-hint").hidden = true;
   }
-  video.addEventListener("ended", revealLogin);
-  video.addEventListener("canplay", () => {
-    introVideoReady = true;
-  });
+  video.addEventListener("ended", () => revealLogin());
   video.addEventListener("error", showVideoFallback);
   if (video.error) showVideoFallback();
 
+  intro.addEventListener("pointerdown", skipIntro);
   function showVideoFallback() {
-    introVideoReady = false;
-    revealLogin();
+    revealLogin({ immediate: true });
   }
 
-  intro.addEventListener("click", () => {
-    if (introVideoReady || !video.error) {
-      if (video.paused) video.play().catch(() => {});
+  intro.addEventListener("click", skipIntro);
+
+  function skipIntro() {
+    video.pause();
+    revealLogin({ immediate: true });
+  }
+
+  function revealLogin({ immediate = false } = {}) {
+    if (!formPanel.hidden) return;
+    if (immediate) {
+      formPanel.classList.add("is-instant");
+      formPanel.hidden = false;
+      intro.hidden = true;
+      intro.classList.remove("is-leaving");
+      document.querySelector("#login-username").focus();
       return;
     }
-    revealLogin();
-  });
-
-  function revealLogin() {
-    if (!formPanel.hidden) return;
     intro.classList.add("is-leaving");
     formPanel.hidden = false;
     window.setTimeout(() => {
@@ -54,6 +56,7 @@ export function initializeAuth({ onAuthenticated }) {
 
   document.querySelector("#login-back").addEventListener("click", () => {
     formPanel.hidden = true;
+    formPanel.classList.remove("is-instant");
     intro.hidden = false;
     intro.classList.remove("is-leaving");
     error.textContent = "";
@@ -103,6 +106,7 @@ export function initializeAuth({ onAuthenticated }) {
     activeSession = null;
     sessionStorage.removeItem(SESSION_KEY);
     formPanel.hidden = true;
+    formPanel.classList.remove("is-instant");
     intro.hidden = false;
     intro.classList.remove("is-leaving");
     loginView.hidden = false;
