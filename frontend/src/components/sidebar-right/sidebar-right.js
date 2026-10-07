@@ -8,6 +8,7 @@ export function mountSidebarRight(root, options) {
   return {
     events,
     controls,
+    initialMode: controls.initialMode,
     checkSchedule: controls.checkSchedule,
     updateCamera: controls.updateCamera,
     setMode: controls.setMode,

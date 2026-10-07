@@ -1,11 +1,11 @@
-.dashboard-view { display: grid; width: 100vw; height: 100dvh; min-height: 600px; grid-template-rows: var(--header-height) minmax(0, 1fr); opacity: 1; background: radial-gradient(ellipse at 50% 48%, rgba(24, 61, 97, .11), transparent 55%); transition: opacity .24s ease, transform .24s ease, --aegis-accent .45s ease; }
-.dashboard-grid { display: grid; min-height: 0; grid-template-columns: minmax(265px, var(--sidebar-left-width)) minmax(380px, 1fr) minmax(300px, var(--sidebar-right-width)); gap: var(--panel-gap); padding: var(--panel-gap); }
+.dashboard-view { position: relative; display: grid; width: 100vw; height: 100dvh; min-height: 600px; grid-template-rows: var(--header-height) minmax(0, 1fr); opacity: 1; background: radial-gradient(ellipse at 50% 48%, rgba(24, 61, 97, .11), transparent 55%); transition: opacity .24s ease, transform .24s ease; }
+.dashboard-grid { display: grid; min-height: 0; grid-template-columns: minmax(250px, var(--sidebar-left-width)) 8px minmax(380px, 1fr) 8px minmax(280px, var(--sidebar-right-width)); gap: var(--panel-gap); padding: var(--panel-gap); }
 .sidebar { display: flex; min-height: 0; flex-direction: column; gap: var(--panel-gap); }
 .viewport-column { display: grid; min-width: 0; min-height: 0; grid-template-rows: minmax(0, 1fr); }
 .sidebar-left { overflow-x: hidden; overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(var(--aegis-accent-rgb),.26) transparent; }
-.sidebar-right { min-height: 0; overflow: hidden; }
-#event-console-root { display: flex; min-height: 0; flex: 1 1 0; overflow: hidden; }
-#security-controls-root { min-height: 0; flex: 0 0 auto; overflow: auto; }
+.sidebar-right { min-height: 0; overflow-x: hidden; overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(var(--aegis-accent-rgb),.26) transparent; }
+#event-console-root { display: flex; height: min(42vh,360px); min-height: 240px; flex: 0 0 min(42vh,360px); overflow: hidden; }
+#security-controls-root { min-height: 0; flex: 0 0 auto; overflow: visible; }
 .metric-history-scroll { min-height: 0; overflow: auto; }
 
 .dashboard-view.mode-lockdown, .dashboard-view.mode-cierre {
@@ -14,9 +14,9 @@
   --aegis-glow: 0 0 34px rgba(255, 0, 85, .2);
 }
 .dashboard-view.mode-evacuacion {
-  --aegis-accent: #ff8800;
-  --aegis-accent-rgb: 255, 136, 0;
-  --aegis-glow: 0 0 34px rgba(255, 136, 0, .24);
+  --aegis-accent: #ff3159;
+  --aegis-accent-rgb: 255, 49, 89;
+  --aegis-glow: 0 0 34px rgba(255, 49, 89, .28);
 }
 .dashboard-view.mode-alerta { --aegis-accent: #ffad42; --aegis-accent-rgb: 255, 173, 66; }
 .dashboard-view.mode-lockdown .metric-card,

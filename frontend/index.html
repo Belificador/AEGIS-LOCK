@@ -47,6 +47,7 @@
     </main>
 
     <dialog id="lockdown-confirmation" class="modal lockdown-dialog" role="alertdialog" aria-modal="true" aria-labelledby="lockdown-confirmation-title" aria-describedby="lockdown-confirmation-message">
+      <button id="dismiss-lockdown" class="lockdown-dismiss" type="button" aria-label="Cerrar confirmación">×</button>
       <div class="lockdown-alert-mark" aria-hidden="true"><svg viewBox="0 0 48 48" focusable="false"><path d="M24 5 44 41H4L24 5Z" /><path d="M24 17v11m0 6h.02" /></svg></div>
       <p class="lockdown-eyebrow"><i></i> PROTOCOLO DE EMERGENCIA · CONFIRMACIÓN REQUERIDA</p>
       <h2 id="lockdown-confirmation-title">¿ESTÁS SEGURO DE QUE DESEAS ACTIVAR EL MODO LOCKDOWN?</h2>
@@ -72,7 +73,7 @@
         <button class="icon-button" type="button" data-close-dialog="camera-dialog" aria-label="Cerrar reproductor">×</button>
       </div>
       <div class="camera-player">
-        <video id="camera-video" controls autoplay muted playsinline></video>
+        <video id="camera-video" controls autoplay muted playsinline loop></video>
         <div id="camera-no-signal" class="camera-no-signal"><span class="camera-no-signal-icon">◉</span><strong>SEÑAL EN ESPERA</strong><p>El flujo se conectará cuando esté disponible desde el gemelo digital.</p></div>
       </div>
       <div class="camera-player-footer"><span id="camera-modal-location">Ubicación pendiente</span><span id="camera-stream-state"><i class="status-led led-offline"></i> SIN TRANSMISIÓN</span></div>

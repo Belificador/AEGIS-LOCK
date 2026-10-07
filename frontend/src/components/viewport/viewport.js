@@ -22,6 +22,7 @@ export function mountViewport(root, { onCameraSelected } = {}) {
           <strong>NO SE PUDO CARGAR EL EDIFICIO</strong>
           <p>Verifica que models_3d/oficina/edificio.glb esté disponible en el despliegue.</p>
         </div>
+        <div id="emergency-mode-overlay" class="emergency-mode-overlay" hidden role="status" aria-live="assertive"><strong id="emergency-mode-title"></strong><span>AEGIS LOCK · PROTOCOLO ACTIVO</span></div>
         <div id="signal-hud" class="signal-hud" hidden><span id="signal-type"></span><time id="signal-timestamp"></time></div>
       </div>
       <footer class="viewport-foot"><span id="signal-footer"><i class="status-led led-offline"></i> DESCONECTADO DE RENDER</span><span>ARRASTRA PARA ROTAR · RUEDA PARA ZOOM</span></footer>
@@ -35,6 +36,8 @@ export function mountViewport(root, { onCameraSelected } = {}) {
   const signalHud = root.querySelector("#signal-hud");
   const signalType = root.querySelector("#signal-type");
   const timestamp = root.querySelector("#signal-timestamp");
+  const emergencyOverlay = root.querySelector("#emergency-mode-overlay");
+  const emergencyTitle = root.querySelector("#emergency-mode-title");
   let visor = null;
   let destroyed = false;
   const pendingEvents = [];
@@ -98,10 +101,22 @@ export function mountViewport(root, { onCameraSelected } = {}) {
     stage.classList.remove("is-intrusion-alert");
   }
 
+  function setMode(mode) {
+    const active = ["LOCKDOWN", "CIERRE DE JORNADA", "EVACUACIÓN"].includes(mode);
+    emergencyOverlay.hidden = !active;
+    emergencyOverlay.dataset.mode = active ? mode : "NORMAL";
+    emergencyTitle.textContent = mode === "EVACUACIÓN"
+      ? "MODO DE EVACUACIÓN"
+      : mode === "LOCKDOWN" || mode === "CIERRE DE JORNADA"
+        ? "CERRADO COMPLETAMENTE"
+        : "";
+  }
+
   setConnection(false);
   return {
     setConnection,
     update,
+    setMode,
     setIntrusionAlert,
     clearIntrusionAlert,
     destroy() {

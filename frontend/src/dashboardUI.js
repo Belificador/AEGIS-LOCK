@@ -6,6 +6,9 @@ import { mountViewport } from "./components/viewport/viewport.js";
 import { DataReceiver } from "./dataReceiver.js";
 import { TelemetryEmitter } from "./eventEmitter.js";
 import { mountAdminDiagnostics } from "./components/sidebar-right/admin-diagnostics.js";
+import { createCameraModal } from "./components/viewport/camera-modal.js";
+import { mountPanelExpansion } from "./components/panel-expansion.js";
+import { mountSidebarResize } from "./components/sidebar-resize.js";
 import { patchState, state } from "./store.js";
 
 const AUTH_URL = import.meta.env.VITE_AUTH_API_URL || "https://aegis-lock-api.onrender.com/api/login";
@@ -44,13 +47,16 @@ export function mountDashboard({ user, session, onLogout, wsUrl }) {
   });
   const sidebarLeft = mountSidebarLeft(document.querySelector("#sidebar-left-root"), getAssistantContext);
   const right = mountSidebarRight(document.querySelector("#sidebar-right-root"), { role: user.role, onModeChange: setMode });
+  const cameraModal = createCameraModal({ session });
   const cameraPublisher = session?.access_token
     ? new TelemetryEmitter({ accessToken: () => session.access_token })
     : null;
   cameraPublisher?.connect();
-  const viewport = mountViewport(document.querySelector("#viewport-root"), { onCameraSelected: publishCameraSelection });
+  const viewport = mountViewport(document.querySelector("#viewport-root"), { onCameraSelected: openCamera });
   const dashboard = document.querySelector("#dashboard-view");
   const root = dashboard;
+  const panelExpansion = mountPanelExpansion();
+  const sidebarResize = mountSidebarResize(dashboard.querySelector(".dashboard-grid"));
   const voltageReadings = new Map();
   const receiver = new DataReceiver({ url: wsUrl, onEvent: handleEvent, onLatency: (latency) => header.setLatency(latency), onStatus: (connection) => {
     const modelConnected = connection === "MODEL_CONNECTED";
@@ -80,6 +86,7 @@ export function mountDashboard({ user, session, onLogout, wsUrl }) {
     if (label === "ALERTA") root.classList.add("mode-alerta");
     header.setMode(mode, source);
     right.setMode(label);
+    viewport.setMode(label);
     if (audit && mode !== previousMode) {
       if (mode === "LOCKDOWN") void postAuditAction("LOCKDOWN_ACTIVATED", { source });
       if (mode === "EVACUACIÓN") void postAuditAction("EVACUATION_ACTIVATED", { source });
@@ -115,12 +122,40 @@ export function mountDashboard({ user, session, onLogout, wsUrl }) {
       metadata: {
         camera_id: camera.cameraId,
         cameraId: camera.cameraId,
-        name: camera.label,
+        name: camera.markerName || camera.label || camera.cameraId,
         location: camera.zone,
         node_name: camera.markerName,
       },
     };
     cameraPublisher?.send(event);
+  }
+
+  function openCamera(camera) {
+    const cameraId = camera.cameraId || camera.id;
+    const number = Number(/^CAM_(\d+)_/.exec(cameraId)?.[1]);
+    const details = {
+      id: cameraId,
+      cameraId,
+      numericId: Number.isFinite(number) ? number : null,
+      shortName: cameraId.replace(/^CAM_\d+_/, "").replaceAll("_", " "),
+      location: camera.zone || camera.location || "Ubicación pendiente",
+    };
+    right.updateCamera({
+      tipo_evento: "camera_selected",
+      valor: cameraId,
+      zona: details.location,
+      metadata: { camera_id: cameraId, location: details.location },
+    });
+    void cameraModal.open(details).then((feedUrl) => {
+      if (!feedUrl) return;
+      right.updateCamera({
+        tipo_evento: "camera_selected",
+        valor: cameraId,
+        zona: details.location,
+        metadata: { camera_id: cameraId, location: details.location, feed_url: feedUrl },
+      });
+    });
+    publishCameraSelection({ ...camera, cameraId, label: details.shortName });
   }
 
   function handleEvent(payload) {
@@ -145,7 +180,7 @@ export function mountDashboard({ user, session, onLogout, wsUrl }) {
     const priorVoltage = voltageReadings.get(voltageZone);
     sidebarLeft.update(event);
     viewport.update(event);
-    if (String(event.tipo_evento).toLowerCase() === "camera_selected") right.updateCamera(event);
+    if (String(event.tipo_evento).toLowerCase() === "camera_selected" && event.origen !== "aegis-dashboard") right.updateCamera(event);
     patchState({ modelConnected: true, connection: "MODEL_CONNECTED", telemetry: { ...state.telemetry, ...event } });
     right.events.append(payload.raw ?? event, alerts.length ? "warning" : "normal", event.timestamp);
     for (const alert of alerts) {
@@ -193,6 +228,9 @@ export function mountDashboard({ user, session, onLogout, wsUrl }) {
     cameraPublisher?.destroy();
     adminDiagnostics?.dispose();
     criticalAlerts.dispose();
+    cameraModal.dispose();
+    panelExpansion.dispose();
+    sidebarResize.destroy();
     viewport.destroy();
     right.destroy();
     header.destroy();

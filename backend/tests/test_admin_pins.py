@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from fastapi.testclient import TestClient
 
 from backend.config import Settings
@@ -39,12 +41,13 @@ def test_admin_can_generate_temporary_pin_and_actor_comes_from_jwt(monkeypatch) 
     monkeypatch.setattr(postgres_service, "create_temporary_pin", create_pin)
     monkeypatch.setattr(postgres_service, "write_audit_log", write_audit_log)
     admin_token, _ = create_access_token(subject="admin", role="admin")
+    requested_at = datetime.now(timezone.utc)
 
     with TestClient(app) as client:
         response = client.post(
             "/api/v1/pins/generate",
             headers={"Authorization": f"Bearer {admin_token}"},
-            json={"door_name": "Puerta Lobby", "duration_hours": 8, "target_user": "visitante-17"},
+            json={"door_name": "Puerta Lobby", "duration_hours": 48, "target_user": "visitante-17"},
         )
 
     assert response.status_code == 200
@@ -52,9 +55,49 @@ def test_admin_can_generate_temporary_pin_and_actor_comes_from_jwt(monkeypatch) 
     assert result["door_name"] == "Puerta Lobby"
     assert len(result["pin_code"]) == 4
     assert created[0]["created_by"] == "admin"
+    assert 47 * 3600 < (created[0]["expires_at"] - requested_at).total_seconds() < 49 * 3600
     assert audits[0]["action"] == "PIN_GENERATED"
     assert audits[0]["performed_by"] == "admin"
     assert "pin_code" not in audits[0]["details"]
+
+
+def test_admin_can_revoke_temporary_pin_and_action_is_audited(monkeypatch) -> None:
+    audits = []
+
+    async def no_close():
+        return None
+
+    async def deactivate(pin_id):
+        assert pin_id == "00000000-0000-0000-0000-000000000042"
+        return {
+            "id": pin_id,
+            "door_name": "Puerta Lobby",
+            "target_user": "visitante-17",
+            "created_by": "admin",
+            "expires_at": datetime.now(timezone.utc),
+            "is_active": False,
+        }
+
+    async def write_audit_log(**values):
+        audits.append(values)
+        return 1
+
+    monkeypatch.setattr(postgres_service, "pool", object())
+    monkeypatch.setattr(postgres_service, "close", no_close)
+    monkeypatch.setattr(postgres_service, "deactivate_temporary_pin", deactivate)
+    monkeypatch.setattr(postgres_service, "write_audit_log", write_audit_log)
+    admin_token, _ = create_access_token(subject="admin", role="admin")
+
+    with TestClient(app) as client:
+        response = client.delete(
+            "/api/v1/pins/00000000-0000-0000-0000-000000000042",
+            headers={"Authorization": f"Bearer {admin_token}"},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True, "id": "00000000-0000-0000-0000-000000000042", "is_active": False}
+    assert audits[0]["action"] == "PIN_REVOKED"
+    assert audits[0]["performed_by"] == "admin"
 
 
 def test_operator_cannot_generate_temporary_pins() -> None:

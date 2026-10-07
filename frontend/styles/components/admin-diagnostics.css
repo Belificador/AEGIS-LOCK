@@ -32,7 +32,7 @@
 .admin-diagnostics-panel > [data-load-more-errors] { display: block; margin: 9px auto 0; min-height: 31px; padding: 6px 12px; color: var(--aegis-accent); cursor: pointer; background: rgba(var(--aegis-accent-rgb),.055); border: 1px solid rgba(var(--aegis-accent-rgb),.3); border-radius: 7px; font: 700 7px var(--font-mono); }
 .admin-diagnostics-panel > [data-load-more-errors][hidden] { display: none; }
 .admin-page-info,.admin-pin-note { color: var(--aegis-text-muted); font-size: 8px; line-height: 1.5; }
-.admin-pin-form { display: grid; grid-template-columns: 1.1fr 1.1fr .7fr auto; align-items: end; gap: 9px; margin-bottom: 11px; }
+.admin-pin-form { display: grid; grid-template-columns: 1.1fr 1.1fr .7fr .65fr auto; align-items: end; gap: 9px; margin-bottom: 11px; }
 .admin-pin-form label { display: grid; gap: 5px; color: var(--aegis-text-muted); font: 700 7px var(--font-mono); }
 .admin-pin-form button { color: #07141a; background: var(--aegis-accent); border-color: var(--aegis-accent); }
 .admin-pin-note { margin: 0 0 13px; }

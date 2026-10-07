@@ -1,3 +1,5 @@
+import { toDurationHours } from "./pin-duration.js";
+
 const API_URL = import.meta.env.VITE_AUTH_API_URL || "https://aegis-lock-api.onrender.com/api/login";
 const API_ROOT = API_URL.replace(/\/(?:api\/login|api\/v1\/auth\/login)\/?$/, "");
 
@@ -32,7 +34,8 @@ export function mountAdminDiagnostics({ session, onClose } = {}) {
         <form class="admin-pin-form" data-pin-form>
           <label>Puerta<select name="door_name" required></select></label>
           <label>Asignado a<input name="target_user" maxlength="120" placeholder="Nombre de visitante" required></label>
-          <label>Duración (horas)<input name="duration_hours" type="number" min="1" max="720" value="8" required></label>
+          <label>Duración<input name="duration_value" type="number" min="1" max="720" value="8" required></label>
+          <label>Unidad<select name="duration_unit"><option value="hours">Horas</option><option value="days">Días</option></select></label>
           <button type="submit">GENERAR PIN</button>
         </form>
         <p class="admin-pin-note">El PIN se almacena cifrado en PostgreSQL y puede revocarse antes de vencer. “Asignado a” queda como dato de trazabilidad; el teclado actual valida el PIN, no la identidad de la persona.</p>
@@ -45,7 +48,20 @@ export function mountAdminDiagnostics({ session, onClose } = {}) {
   document.body.append(dialog);
 
   const status = dialog.querySelector("[data-status]");
+  const durationInput = dialog.querySelector('[name="duration_value"]');
+  const durationUnit = dialog.querySelector('[name="duration_unit"]');
+  const pinForm = dialog.querySelector("[data-pin-form]");
   let errorOffset = 0;
+
+  function updateDurationLimit() {
+    const days = durationUnit.value === "days";
+    durationInput.max = days ? "30" : "720";
+    durationInput.setAttribute("aria-label", days ? "Duración en días" : "Duración en horas");
+    durationInput.value = String(Math.min(Number(durationInput.value) || 1, Number(durationInput.max)));
+  }
+
+  updateDurationLimit();
+  durationUnit.addEventListener("change", updateDurationLimit);
 
   async function api(path, options = {}) {
     if (!session?.access_token) throw new Error("La sesión no incluye JWT de Aegis.");
@@ -240,16 +256,17 @@ export function mountAdminDiagnostics({ session, onClose } = {}) {
   dialog.querySelector("[data-load-more-errors]").addEventListener("click", () => loadErrors({ append: true }));
   dialog.querySelector("[data-refresh-pins]").addEventListener("click", loadPins);
   dialog.querySelector("[data-days]").addEventListener("change", loadHistory);
-  dialog.querySelector("[data-pin-form]").addEventListener("submit", async (event) => {
+  pinForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     try {
+      const durationHours = toDurationHours(form.get("duration_value"), form.get("duration_unit"));
       const generated = await api("/pins/generate", {
         method: "POST",
         body: JSON.stringify({
           door_name: String(form.get("door_name")),
           target_user: String(form.get("target_user")).trim(),
-          duration_hours: Number(form.get("duration_hours")),
+          duration_hours: durationHours,
         }),
       });
       const result = dialog.querySelector("[data-pin-result]");
@@ -257,6 +274,7 @@ export function mountAdminDiagnostics({ session, onClose } = {}) {
       result.textContent = `PIN ${generated.pin_code} · ${generated.door_name} · vence ${formatDate(generated.expires_at)}`;
       setStatus("PIN creado; el código queda protegido en PostgreSQL.");
       event.currentTarget.reset();
+      updateDurationLimit();
       await loadPins();
     } catch (error) {
       setStatus(error.message, true);

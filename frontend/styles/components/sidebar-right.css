@@ -30,7 +30,7 @@
 .security-button.is-lockdown { background: linear-gradient(110deg,#ff0055,#ff3975 55%,#fc6892); animation: lockdown-pulse 1.8s ease-in-out infinite; }
 .evacuation-button { min-height: 38px; color: #ffe5bb; background: linear-gradient(100deg,rgba(255,153,0,.15),rgba(255,153,0,.07)); border-color: rgba(255,153,0,.32); }
 .evacuation-button .security-button-icon { border-color: rgba(255,153,0,.28); }
-.evacuation-button.is-evacuating { color: #111; background: #ff8800; border-color: #ffc266; box-shadow: 0 0 22px rgba(255,136,0,.5),inset 0 1px rgba(255,255,255,.5); animation: evacuation-strobe .62s steps(2,end) infinite; }
+.evacuation-button.is-evacuating { color: #fff; background: #e90045; border-color: #ffb02e; box-shadow: 0 0 22px rgba(255,49,89,.5),inset 0 1px rgba(255,255,255,.5); animation: evacuation-strobe .62s steps(2,end) infinite; }
 .evacuation-button.is-evacuating .security-button-icon { border-color: rgba(20,12,0,.38); }
 .schedule-block { margin-top: 15px; padding-top: 13px; border-top: 1px solid var(--aegis-border); }
 .schedule-heading { margin-bottom: 9px; padding-bottom: 0; border: 0; }

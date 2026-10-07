@@ -98,3 +98,4 @@ function drawChart() {
 }
 
 dialog.addEventListener("close", () => resizeObserver?.disconnect());
+dialog.addEventListener("click", (event) => { if (event.target === dialog) dialog.close(); });

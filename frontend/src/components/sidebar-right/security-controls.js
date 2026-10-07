@@ -20,7 +20,7 @@ export function mountSecurityControls(root, { role, onModeChange }) {
     <section class="panel-card selected-camera-panel" aria-labelledby="selected-camera-title">
       <div class="panel-heading"><span id="selected-camera-title">Canales de cámara</span><small id="camera-channel-state">ESPERANDO MODELO</small></div>
       <div class="selected-camera-player">
-        <video id="selected-camera-video" controls autoplay muted playsinline crossorigin="anonymous" hidden></video>
+        <video id="selected-camera-video" controls autoplay muted playsinline loop crossorigin="anonymous" hidden></video>
         <div class="camera-placeholder" aria-hidden="true"><i></i><span></span><span></span><span></span></div>
       </div>
       <p class="camera-side-location">Modelo no conectado. Los canales aparecerán al recibir telemetría real.</p>
@@ -32,6 +32,7 @@ export function mountSecurityControls(root, { role, onModeChange }) {
   const release = root.querySelector("#release-system");
   const lockdownDialog = document.querySelector("#lockdown-confirmation");
   const cancelLockdown = lockdownDialog.querySelector("#cancel-lockdown");
+  const dismissLockdown = lockdownDialog.querySelector("#dismiss-lockdown");
   const confirmLockdown = lockdownDialog.querySelector("#confirm-lockdown");
   const lockdownButton = root.querySelector("#lockdown-button");
   const evacuationButton = root.querySelector("#evacuation-button");
@@ -50,6 +51,10 @@ export function mountSecurityControls(root, { role, onModeChange }) {
   let initialMode = readMode();
 
   lockdownButton.addEventListener("click", () => lockdownDialog.showModal());
+  dismissLockdown.addEventListener("click", () => lockdownDialog.close("cancel"));
+  lockdownDialog.addEventListener("click", (event) => {
+    if (event.target === lockdownDialog) lockdownDialog.close("cancel");
+  });
   cancelLockdown.addEventListener("click", () => lockdownDialog.close("cancel"));
   confirmLockdown.addEventListener("click", () => {
     lockdownDialog.close("confirm");

@@ -1,6 +1,9 @@
 import { CAMERA_STREAMS } from "./camera-config.js";
 
-export function createCameraModal() {
+const AUTH_URL = import.meta.env.VITE_AUTH_API_URL || "https://aegis-lock-api.onrender.com/api/login";
+const API_ROOT = AUTH_URL.replace(/\/(?:api\/login|api\/v1\/auth\/login)\/?$/, "");
+
+export function createCameraModal({ session } = {}) {
   const dialog = document.querySelector("#camera-dialog");
   const video = document.querySelector("#camera-video");
   const placeholder = document.querySelector("#camera-no-signal");
@@ -9,6 +12,7 @@ export function createCameraModal() {
   const state = document.querySelector("#camera-stream-state");
   let currentCamera = null;
   const listeners = new AbortController();
+  let requestSequence = 0;
 
   video.addEventListener("canplay", () => {
     video.classList.add("is-live");
@@ -34,27 +38,40 @@ export function createCameraModal() {
     state.append(led, document.createTextNode(` ${message}`));
   }
 
-  function open(camera, streamUrlOverride) {
+  async function open(camera, streamUrlOverride) {
     currentCamera = camera;
     title.textContent = `Cámara ${camera.id} · ${camera.shortName}`;
     locationLabel.textContent = camera.location;
-    const streamUrl = streamUrlOverride || CAMERA_STREAMS[camera.id];
+    const requestId = ++requestSequence;
     video.classList.remove("is-live");
     placeholder.hidden = false;
     video.pause();
     video.removeAttribute("src");
-    if (streamUrl) {
+    setState("CONECTANDO", false);
+    if (!dialog.open) dialog.showModal();
+
+    try {
+      let streamUrl = streamUrlOverride;
+      if (!streamUrl && session?.access_token) streamUrl = await getSignedFeedUrl(camera.id);
+      if (!streamUrl) streamUrl = CAMERA_STREAMS[camera.numericId] || CAMERA_STREAMS[camera.id];
+      if (requestId !== requestSequence || !dialog.open) return null;
+      if (!streamUrl) {
+        setState("SIN TRANSMISIÓN CONFIGURADA", false);
+        return null;
+      }
+      video.loop = true;
       video.src = streamUrl;
-      setState("CONECTANDO", false);
       video.load();
       video.play().catch(() => {});
-    } else {
-      setState("SIN TRANSMISIÓN", false);
+      return streamUrl;
+    } catch {
+      if (requestId === requestSequence && dialog.open) setState("NO SE PUDO CONECTAR AL FEED", false);
+      return null;
     }
-    if (!dialog.open) dialog.showModal();
   }
 
   function stopStream() {
+    requestSequence += 1;
     video.pause();
     video.removeAttribute("src");
     video.load();
@@ -69,4 +86,14 @@ export function createCameraModal() {
     dispose() { listeners.abort(); stopStream(); },
     get selected() { return currentCamera; },
   };
+
+  async function getSignedFeedUrl(cameraId) {
+    if (!session?.access_token) return null;
+    const response = await fetch(`${API_ROOT}/api/v1/cameras/${encodeURIComponent(cameraId)}/feed-url`, {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.detail || "No se pudo obtener el feed de la cámara.");
+    return payload.feed_url || null;
+  }
 }
