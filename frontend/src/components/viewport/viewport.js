@@ -26,7 +26,8 @@ export function mountViewport(root, { onCameraSelected } = {}) {
         <div id="signal-hud" class="signal-hud" hidden><span id="signal-type"></span><time id="signal-timestamp"></time></div>
       </div>
       <footer class="viewport-foot"><span id="signal-footer"><i class="status-led led-offline"></i> DESCONECTADO DE RENDER</span><span>ARRASTRA PARA ROTAR · RUEDA PARA ZOOM</span></footer>
-    </section>`;
+    </section>
+    <nav class="tactical-dock" aria-label="Controles tácticos de emergencia"><span class="tactical-dock-label">PROTOCOLO TÁCTICO</span><div id="tactical-dock-actions" class="tactical-dock-actions" role="group" aria-label="Activar protocolos de emergencia"></div></nav>`;
 
   const stage = root.querySelector("#twin-stage");
   const loading = root.querySelector("#model-disconnected");
@@ -114,6 +115,7 @@ export function mountViewport(root, { onCameraSelected } = {}) {
 
   setConnection(false);
   return {
+    tacticalDock: root.querySelector("#tactical-dock-actions"),
     setConnection,
     update,
     setMode,

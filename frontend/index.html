@@ -72,11 +72,15 @@
         <div><p class="eyebrow">CCTV · SEÑAL LOCAL</p><h2 id="camera-title">Cámara seleccionada</h2></div>
         <button class="icon-button" type="button" data-close-dialog="camera-dialog" aria-label="Cerrar reproductor">×</button>
       </div>
-      <div class="camera-player">
-        <video id="camera-video" controls autoplay muted playsinline loop></video>
+      <div class="camera-player" id="camera-player">
+        <video id="camera-video" autoplay muted playsinline loop></video>
         <div id="camera-no-signal" class="camera-no-signal"><span class="camera-no-signal-icon">◉</span><strong>SEÑAL EN ESPERA</strong><p>El flujo se conectará cuando esté disponible desde el gemelo digital.</p></div>
+        <div class="camera-tactical-overlay"><span class="camera-live-badge"><i></i> EN VIVO</span><div><strong id="camera-overlay-name">Cámara seleccionada</strong><span id="camera-overlay-location">Ubicación pendiente</span></div><time id="camera-overlay-time">--:--:--</time></div>
+        <button id="camera-previous" class="camera-cycle-button camera-cycle-previous" type="button" aria-label="Cámara anterior">‹</button>
+        <button id="camera-next" class="camera-cycle-button camera-cycle-next" type="button" aria-label="Cámara siguiente">›</button>
+        <button id="camera-fullscreen" class="camera-fullscreen-button" type="button" aria-label="Activar pantalla completa" title="Pantalla completa">⛶</button>
       </div>
-      <div class="camera-player-footer"><span id="camera-modal-location">Ubicación pendiente</span><span id="camera-stream-state"><i class="status-led led-offline"></i> SIN TRANSMISIÓN</span></div>
+      <div class="camera-player-footer"><span id="camera-modal-location">Ubicación pendiente</span><span id="camera-stream-state"><i class="status-led led-offline"></i> SIN TRANSMISIÓN</span><span id="camera-sequence">0 / 0</span></div>
     </dialog>
 
     <script type="module" src="/src/main.js"></script>

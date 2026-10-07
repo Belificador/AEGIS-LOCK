@@ -1,14 +1,14 @@
+import { CAMERA_MARKERS } from "../viewport/camera-markers.js";
+
 const SCHEDULE_KEY = "aegis.closeSchedule.v1";
 const MODE_KEY = "aegis.localMode.v1";
 
-export function mountSecurityControls(root, { role, onModeChange }) {
+export function mountSecurityControls(root, { role, onModeChange, onOpenCamera, tacticalDockRoot }) {
   root.innerHTML = `
     <section class="panel-card security-panel" aria-labelledby="security-title">
       <div class="panel-heading"><span id="security-title">Control de seguridad</span><small>SIM / LOCAL</small></div>
       <div class="security-mode-banner"><i class="status-led led-warning"></i><span><small>ESTADO ACTUAL</small><strong>SIMULACIÓN LOCAL</strong></span><b>DEMO</b></div>
       <p class="security-subtitle">Protocolos tácticos de demostración. Sin conexión a cerraduras ni actuadores.</p>
-      <button id="lockdown-button" class="security-button lockdown-button" type="button"><span class="security-button-icon" aria-hidden="true">▣</span><span class="lockdown-label">ACTIVAR MODO LOCKDOWN</span><b aria-hidden="true">↗</b></button>
-      <button id="evacuation-button" class="security-button evacuation-button" type="button"><span class="security-button-icon" aria-hidden="true">⚠</span><span>ACTIVAR MODO / EVACUACIÓN</span></button>
       <div class="schedule-block">
         <div class="panel-heading schedule-heading"><span>Cierre de jornada</span><small>CIERRE PROGRAMADO</small></div>
         <div class="schedule-row"><label class="visually-hidden" for="close-time">Hora de cierre</label><input id="close-time" type="time" value="18:00" /><button id="schedule-toggle" class="schedule-button" type="button">PROGRAMAR CIERRE</button></div>
@@ -19,10 +19,12 @@ export function mountSecurityControls(root, { role, onModeChange }) {
     </section>
     <section class="panel-card selected-camera-panel" aria-labelledby="selected-camera-title">
       <div class="panel-heading"><span id="selected-camera-title">Canales de cámara</span><small id="camera-channel-state">ESPERANDO MODELO</small></div>
-      <div class="selected-camera-player">
-        <video id="selected-camera-video" controls autoplay muted playsinline loop crossorigin="anonymous" hidden></video>
+      <div id="camera-channel-list" class="camera-channel-list" aria-label="Canales disponibles"></div>
+      <button id="selected-camera-preview" class="selected-camera-player" type="button" disabled aria-label="Abrir cámara seleccionada">
+        <video id="selected-camera-video" autoplay muted playsinline loop crossorigin="anonymous" hidden></video>
         <div class="camera-placeholder" aria-hidden="true"><i></i><span></span><span></span><span></span></div>
-      </div>
+        <div class="camera-preview-overlay"><span class="camera-preview-live"><i class="status-led led-offline"></i><b id="camera-preview-state">SIN SEÑAL</b></span><strong id="camera-preview-name">Selecciona una cámara</strong><time id="camera-preview-time">--:--:--</time></div>
+      </button>
       <p class="camera-side-location">Modelo no conectado. Los canales aparecerán al recibir telemetría real.</p>
     </section>`;
 
@@ -30,23 +32,77 @@ export function mountSecurityControls(root, { role, onModeChange }) {
   const toggle = root.querySelector("#schedule-toggle");
   const status = root.querySelector("#schedule-status");
   const release = root.querySelector("#release-system");
+  const cameraPreview = root.querySelector("#selected-camera-preview");
+  const cameraPreviewName = root.querySelector("#camera-preview-name");
+  const cameraPreviewState = root.querySelector("#camera-preview-state");
+  const cameraPreviewTime = root.querySelector("#camera-preview-time");
+  const cameraChannelList = root.querySelector("#camera-channel-list");
+  const cameraChannelState = root.querySelector("#camera-channel-state");
+  const cameraLocation = root.querySelector(".camera-side-location");
   const lockdownDialog = document.querySelector("#lockdown-confirmation");
   const cancelLockdown = lockdownDialog.querySelector("#cancel-lockdown");
   const dismissLockdown = lockdownDialog.querySelector("#dismiss-lockdown");
   const confirmLockdown = lockdownDialog.querySelector("#confirm-lockdown");
-  const lockdownButton = root.querySelector("#lockdown-button");
-  const evacuationButton = root.querySelector("#evacuation-button");
+  const lockdownButton = document.createElement("button");
+  lockdownButton.id = "lockdown-button";
+  lockdownButton.className = "security-button lockdown-button";
+  lockdownButton.type = "button";
+  lockdownButton.innerHTML = '<span class="security-button-icon" aria-hidden="true">▣</span><span class="lockdown-label">ACTIVAR MODO LOCKDOWN</span><b aria-hidden="true">↗</b>';
+  const evacuationButton = document.createElement("button");
+  evacuationButton.id = "evacuation-button";
+  evacuationButton.className = "security-button evacuation-button";
+  evacuationButton.type = "button";
+  evacuationButton.innerHTML = '<span class="security-button-icon" aria-hidden="true">⚠</span><span>ACTIVAR MODO / EVACUACIÓN</span>';
+  (tacticalDockRoot || root.querySelector(".security-panel")).append(lockdownButton, evacuationButton);
   const cameraVideo = root.querySelector("#selected-camera-video");
   const cameraPlaceholder = root.querySelector(".camera-placeholder");
   let selectedCameraId = null;
+  let selectedCamera = null;
+  const cameraChannelNodes = new Map();
+
+  for (const camera of CAMERA_MARKERS) {
+    const number = Number(/^CAM_(\d+)_/.exec(camera.cameraId)?.[1]);
+    const shortName = camera.cameraId.replace(/^CAM_\d+_/, "").replaceAll("_", " ");
+    const channel = document.createElement("button");
+    channel.type = "button";
+    channel.className = "camera-channel-button";
+    channel.dataset.cameraId = camera.cameraId;
+    channel.dataset.availability = "unknown";
+    channel.setAttribute("aria-label", `Abrir cámara ${number}: ${camera.zone}`);
+    const code = document.createElement("span");
+    code.className = "camera-channel-code";
+    code.textContent = `CAM ${String(number).padStart(2, "0")}`;
+    const name = document.createElement("strong");
+    name.textContent = shortName;
+    const led = document.createElement("i");
+    led.className = "status-led led-offline";
+    led.setAttribute("aria-hidden", "true");
+    channel.append(code, name, led);
+    channel.addEventListener("click", () => onOpenCamera?.({ ...camera, id: camera.cameraId, numericId: number, shortName, location: camera.zone }));
+    cameraChannelList.append(channel);
+    cameraChannelNodes.set(camera.cameraId, channel);
+  }
+
+  cameraPreview.addEventListener("click", () => {
+    if (selectedCamera) onOpenCamera?.(selectedCamera);
+  });
   cameraVideo.addEventListener("canplay", () => {
-    root.querySelector("#camera-channel-state").textContent = `CÁMARA ${selectedCameraId} · EN VIVO`;
-    root.querySelector(".camera-side-location").textContent = `${root.querySelector(".camera-side-location").dataset.location || ""} · TRANSMISIÓN DISPONIBLE`;
+    cameraChannelState.textContent = `CÁMARA ${selectedCameraId} · EN VIVO`;
+    cameraPreviewState.textContent = "EN VIVO";
+    cameraPreview.querySelector(".status-led").className = "status-led led-normal";
+    cameraChannelNodes.get(selectedCameraId)?.setAttribute("data-availability", "active");
+    cameraLocation.textContent = `${cameraLocation.dataset.location || ""} · TRANSMISIÓN DISPONIBLE`;
   });
   cameraVideo.addEventListener("error", () => {
-    root.querySelector("#camera-channel-state").textContent = `CÁMARA ${selectedCameraId || "—"} · SIN SEÑAL`;
-    root.querySelector(".camera-side-location").textContent = "El feed asignado no está disponible.";
+    cameraChannelState.textContent = `CÁMARA ${selectedCameraId || "—"} · SIN SEÑAL`;
+    cameraPreviewState.textContent = "SIN SEÑAL";
+    cameraPreview.querySelector(".status-led").className = "status-led led-offline";
+    cameraChannelNodes.get(selectedCameraId)?.setAttribute("data-availability", "inactive");
+    cameraLocation.textContent = "El feed asignado no está disponible.";
   });
+  const updateCameraClock = () => { cameraPreviewTime.textContent = new Intl.DateTimeFormat("es", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(new Date()); };
+  updateCameraClock();
+  const cameraClockTimer = window.setInterval(updateCameraClock, 1000);
   let schedule = readSchedule();
   let initialMode = readMode();
 
@@ -121,10 +177,20 @@ export function mountSecurityControls(root, { role, onModeChange }) {
     const location = metadata.location || metadata.ubicacion || camera.location || event.zona || "Ubicación recibida del emisor";
     const feedUrl = metadata.feed_url || metadata.stream_url || metadata.video_url || metadata.feed;
     selectedCameraId = id;
-    const locationNode = root.querySelector(".camera-side-location");
-    locationNode.dataset.location = location;
-    root.querySelector("#camera-channel-state").textContent = `CÁMARA ${id} · ${feedUrl ? "CONECTANDO" : "SIN VIDEO"}`;
-    locationNode.textContent = `${location} · ${feedUrl ? "CONECTANDO AL FEED" : "SIN VIDEO ASIGNADO"}`;
+    const marker = CAMERA_MARKERS.find((item) => item.cameraId === id);
+    selectedCamera = marker
+      ? { ...marker, id, cameraId: id, numericId: Number(/^CAM_(\d+)_/.exec(id)?.[1]), shortName: id.replace(/^CAM_\d+_/, "").replaceAll("_", " "), location }
+      : { id, cameraId: id, numericId: Number(/^CAM_(\d+)_/.exec(id)?.[1]), shortName: id, zone: location, location };
+    cameraPreview.disabled = false;
+    cameraPreviewName.textContent = selectedCamera.shortName;
+    cameraPreview.setAttribute("aria-label", `Abrir cámara ${selectedCamera.shortName} en pantalla completa`);
+    cameraLocation.dataset.location = location;
+    cameraChannelState.textContent = `CÁMARA ${id} · ${feedUrl ? "CONECTANDO" : "SELECCIONADA"}`;
+    cameraPreviewState.textContent = feedUrl ? "CONECTANDO" : "SELECCIONADA";
+    cameraPreview.querySelector(".status-led").className = "status-led led-warning";
+    cameraLocation.textContent = `${location} · ${feedUrl ? "CONECTANDO AL FEED" : "Toca para abrir la transmisión"}`;
+    for (const [cameraId, channel] of cameraChannelNodes) channel.classList.toggle("is-selected", cameraId === id);
+    cameraChannelNodes.get(id)?.setAttribute("data-availability", feedUrl ? "loading" : "unknown");
     cameraVideo.pause();
     cameraVideo.removeAttribute("src");
     cameraVideo.hidden = !feedUrl;
@@ -136,14 +202,18 @@ export function mountSecurityControls(root, { role, onModeChange }) {
     }
   }
 
-  return { initialMode, checkSchedule, updateCamera, destroy() {
+  function setCameraAvailability(cameraId, available) {
+    cameraChannelNodes.get(cameraId)?.setAttribute("data-availability", available ? "active" : "inactive");
+  }
+
+  return { initialMode, checkSchedule, updateCamera, setCameraAvailability, destroy() {
+    window.clearInterval(cameraClockTimer);
     cameraVideo.pause();
     cameraVideo.removeAttribute("src");
     cameraVideo.load();
   }, setMode(mode) {
-    const button = root.querySelector("#lockdown-button");
-    button.classList.toggle("is-lockdown", mode === "LOCKDOWN" || mode === "CIERRE DE JORNADA");
-    button.querySelector(".lockdown-label").textContent = mode === "LOCKDOWN" || mode === "CIERRE DE JORNADA"
+    lockdownButton.classList.toggle("is-lockdown", mode === "LOCKDOWN" || mode === "CIERRE DE JORNADA");
+    lockdownButton.querySelector(".lockdown-label").textContent = mode === "LOCKDOWN" || mode === "CIERRE DE JORNADA"
       ? "LOCKDOWN SIMULADO ACTIVO"
       : "ACTIVAR MODO LOCKDOWN";
     evacuationButton.classList.toggle("is-evacuating", mode === "EVACUACIÓN");

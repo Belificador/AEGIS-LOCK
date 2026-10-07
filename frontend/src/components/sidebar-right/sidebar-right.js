@@ -12,6 +12,7 @@ export function mountSidebarRight(root, options) {
     checkSchedule: controls.checkSchedule,
     updateCamera: controls.updateCamera,
     setMode: controls.setMode,
+    setCameraAvailability: controls.setCameraAvailability,
     setConnection: events.setConnection,
     destroy: controls.destroy,
   };

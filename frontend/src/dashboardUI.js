@@ -9,6 +9,7 @@ import { mountAdminDiagnostics } from "./components/sidebar-right/admin-diagnost
 import { createCameraModal } from "./components/viewport/camera-modal.js";
 import { mountPanelExpansion } from "./components/panel-expansion.js";
 import { mountSidebarResize } from "./components/sidebar-resize.js";
+import { CAMERA_MARKERS } from "./components/viewport/camera-markers.js";
 import { patchState, state } from "./store.js";
 
 const AUTH_URL = import.meta.env.VITE_AUTH_API_URL || "https://aegis-lock-api.onrender.com/api/login";
@@ -46,13 +47,28 @@ export function mountDashboard({ user, session, onLogout, wsUrl }) {
     },
   });
   const sidebarLeft = mountSidebarLeft(document.querySelector("#sidebar-left-root"), getAssistantContext);
-  const right = mountSidebarRight(document.querySelector("#sidebar-right-root"), { role: user.role, onModeChange: setMode });
-  const cameraModal = createCameraModal({ session });
+  const viewport = mountViewport(document.querySelector("#viewport-root"), { onCameraSelected: openCamera });
+  const right = mountSidebarRight(document.querySelector("#sidebar-right-root"), {
+    role: user.role,
+    onModeChange: setMode,
+    onOpenCamera: openCamera,
+    tacticalDockRoot: viewport.tacticalDock,
+  });
+  const cameraModal = createCameraModal({
+    session,
+    cameras: CAMERA_MARKERS,
+    onAvailability: (cameraId, available) => right.setCameraAvailability(cameraId, available),
+    onSelection: (camera, feedUrl) => right.updateCamera({
+      tipo_evento: "camera_selected",
+      valor: camera.id,
+      zona: camera.location,
+      metadata: { camera_id: camera.id, name: camera.shortName, location: camera.location, feed_url: feedUrl },
+    }),
+  });
   const cameraPublisher = session?.access_token
     ? new TelemetryEmitter({ accessToken: () => session.access_token })
     : null;
   cameraPublisher?.connect();
-  const viewport = mountViewport(document.querySelector("#viewport-root"), { onCameraSelected: openCamera });
   const dashboard = document.querySelector("#dashboard-view");
   const root = dashboard;
   const panelExpansion = mountPanelExpansion();
@@ -92,6 +108,14 @@ export function mountDashboard({ user, session, onLogout, wsUrl }) {
       if (mode === "EVACUACIÓN") void postAuditAction("EVACUATION_ACTIVATED", { source });
       if (mode === "NORMAL" && previousMode === "LOCKDOWN") void postAuditAction("LOCKDOWN_RELEASED", { source });
       if (mode === "NORMAL" && previousMode === "EVACUACIÓN") void postAuditAction("EVACUATION_RELEASED", { source });
+      if (["LOCKDOWN", "EVACUACIÓN", "NORMAL"].includes(mode)) {
+        right.events.append({
+          kind: "local_mode",
+          mode: label,
+          actor: user.role === "admin" ? "Administrador" : user.username,
+          source,
+        });
+      }
     }
   }
 
@@ -146,29 +170,21 @@ export function mountDashboard({ user, session, onLogout, wsUrl }) {
       zona: details.location,
       metadata: { camera_id: cameraId, location: details.location },
     });
-    void cameraModal.open(details).then((feedUrl) => {
-      if (!feedUrl) return;
-      right.updateCamera({
-        tipo_evento: "camera_selected",
-        valor: cameraId,
-        zona: details.location,
-        metadata: { camera_id: cameraId, location: details.location, feed_url: feedUrl },
-      });
-    });
+    void cameraModal.open(details);
     publishCameraSelection({ ...camera, cameraId, label: details.shortName });
   }
 
   function handleEvent(payload) {
     if (payload.kind === "connection") {
-      right.events.append(payload, "system");
+      right.events.append(payload, { priority: "system" });
       return;
     }
     if (payload.kind === "error") {
-      right.events.append(payload.raw ?? payload, "warning");
+      right.events.append(payload, { priority: "critical" });
       return;
     }
     if (payload.kind === "message") {
-      right.events.append(payload.raw);
+      right.events.append(payload, { priority: "system" });
       return;
     }
     if (payload.kind !== "telemetry" || !payload.event) return;
@@ -182,9 +198,8 @@ export function mountDashboard({ user, session, onLogout, wsUrl }) {
     viewport.update(event);
     if (String(event.tipo_evento).toLowerCase() === "camera_selected" && event.origen !== "aegis-dashboard") right.updateCamera(event);
     patchState({ modelConnected: true, connection: "MODEL_CONNECTED", telemetry: { ...state.telemetry, ...event } });
-    right.events.append(payload.raw ?? event, alerts.length ? "warning" : "normal", event.timestamp);
+    right.events.append(event, { alerts, timestamp: event.timestamp });
     for (const alert of alerts) {
-      right.events.alert(`${alert.code}: ${alert.message}`, alert.severity === "critical" ? "critical" : "warning");
       patchState({ recentAlerts: [...state.recentAlerts.slice(-9), alert.message] });
       if (state.mode === "NORMAL") setMode("ALERTA", alert.code);
     }
@@ -192,7 +207,6 @@ export function mountDashboard({ user, session, onLogout, wsUrl }) {
     const deniedPin = String(event.tipo_evento).toLowerCase() === "acceso_pin" && String(event.valor).toUpperCase() === "DENIED";
     if (deniedPin) {
       const intrusion = `ACCESO DENEGADO${event.zona ? ` · ${event.zona}` : ""}${event.origen ? ` · ${event.origen}` : ""}`;
-      right.events.alert(intrusion, "critical");
       viewport.setIntrusionAlert?.(event.zona);
       patchState({ recentAlerts: [...state.recentAlerts.slice(-9), intrusion] });
       if (state.mode === "NORMAL") setMode("ALERTA", "INTRUSIÓN DETECTADA");
@@ -208,7 +222,6 @@ export function mountDashboard({ user, session, onLogout, wsUrl }) {
       if (state.mode === "NORMAL") setMode("ALERTA", "CAÍDA DE VOLTAJE");
     }
     if (event.voltage_v != null && currentVoltage === 0) {
-      right.events.alert(`APAGÓN DETECTADO · ${event.zone || event.zona || "ALIMENTACIÓN GLOBAL"}`, "critical");
       patchState({ recentAlerts: [...state.recentAlerts.slice(-9), "Apagón eléctrico detectado"] });
       if (state.mode === "NORMAL") setMode("ALERTA", "APAGÓN ELÉCTRICO");
     }
