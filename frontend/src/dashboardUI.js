@@ -65,7 +65,7 @@ export function mountDashboard({ user, session, onLogout, wsUrl }) {
       metadata: { camera_id: camera.id, name: camera.shortName, location: camera.location, feed_url: feedUrl },
     }),
   });
-  const cameraPublisher = session?.access_token
+  const cameraPublisher = session?.access_token && ["operator", "admin"].includes(user.role)
     ? new TelemetryEmitter({ accessToken: () => session.access_token })
     : null;
   cameraPublisher?.connect();

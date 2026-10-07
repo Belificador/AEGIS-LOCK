@@ -5,13 +5,13 @@ import hmac
 import logging
 import secrets
 from typing import Annotated, Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from backend.config import get_settings
 from backend.core.dependencies import require_admin
-from backend.core.pin_security import decrypt_pin, encrypt_pin, hash_pin
+from backend.core.pin_security import decrypt_pin, encrypt_pin, hash_pin_candidates
 from backend.core.rate_limit import limiter
 from backend.models.schemas import PinGenerateRequest, PinGenerateResponse, PinValidationRequest
 from backend.services.door_catalog import DOORS, canonical_door
@@ -22,7 +22,8 @@ _logger = logging.getLogger(__name__)
 
 
 @router.get("/doors")
-async def list_doors(_: Annotated[dict[str, Any], Depends(require_admin)]) -> list[dict[str, Any]]:
+@limiter.limit("60/minute")
+async def list_doors(request: Request, _: Annotated[dict[str, Any], Depends(require_admin)]) -> list[dict[str, Any]]:
     return [dict(door) for door in DOORS]
 
 
@@ -41,11 +42,11 @@ async def generate_pin(
 
     settings = get_settings()
     pin_code = ""
-    pin_digest = ""
+    pin_digests: tuple[str, str] = ("", "")
     for _ in range(100):
         pin_code = str(secrets.randbelow(10**settings.pin_code_length)).zfill(settings.pin_code_length)
-        pin_digest = hash_pin(str(door["door_name"]), pin_code)
-        if not await postgres_service.temporary_pin_hash_exists(str(door["door_name"]), pin_digest):
+        pin_digests = hash_pin_candidates(str(door["door_name"]), pin_code)
+        if not await postgres_service.temporary_pin_hash_exists(str(door["door_name"]), pin_digests):
             break
     else:
         raise HTTPException(status_code=503, detail="No se pudo generar un PIN disponible")
@@ -57,7 +58,7 @@ async def generate_pin(
         pin_id=pin_id,
         door_name=str(door["door_name"]),
         pin_code=encrypt_pin(str(door["door_name"]), pin_code),
-        pin_hash=pin_digest,
+        pin_hash=pin_digests[0],
         target_user=payload.target_user,
         created_by=created_by,
         expires_at=expires_at,
@@ -83,11 +84,11 @@ async def generate_pin(
 async def list_pins(
     request: Request,
     _: Annotated[dict[str, Any], Depends(require_admin)],
-    include_inactive: bool = False,
-    limit: int = 100,
+    include_inactive: bool = Query(default=False),
+    limit: int = Query(default=100, ge=1, le=200),
 ) -> list[dict[str, Any]]:
     pins = await postgres_service.list_temporary_pins(
-        limit=max(1, min(limit, 200)), include_inactive=include_inactive
+        limit=limit, include_inactive=include_inactive
     )
     result = []
     for pin in pins:
@@ -112,20 +113,21 @@ async def list_pins(
 @router.delete("/{pin_id}")
 @limiter.limit("20/minute")
 async def revoke_pin(
-    pin_id: str,
+    pin_id: UUID,
     request: Request,
     claims: Annotated[dict[str, Any], Depends(require_admin)],
 ) -> dict[str, Any]:
-    revoked = await postgres_service.deactivate_temporary_pin(pin_id)
+    pin_id_text = str(pin_id)
+    revoked = await postgres_service.deactivate_temporary_pin(pin_id_text)
     if revoked is None:
         raise HTTPException(status_code=404, detail="PIN temporal no encontrado o ya revocado")
     actor = str(claims["sub"])
     await postgres_service.write_audit_log(
         action="PIN_REVOKED",
         performed_by=actor,
-        details={"pin_id": pin_id, "door_name": revoked["door_name"]},
+        details={"pin_id": pin_id_text, "door_name": revoked["door_name"]},
     )
-    return {"ok": True, "id": pin_id, "is_active": False}
+    return {"ok": True, "id": pin_id_text, "is_active": False}
 
 
 @router.post("/validate")
@@ -142,11 +144,21 @@ async def validate_pin(payload: PinValidationRequest, request: Request) -> dict[
 
     door = canonical_door(payload.door_name)
     if door is None or len(payload.pin_code) != settings.pin_code_length:
+        await postgres_service.write_audit_log(
+            action="PIN_VALIDATION_DENIED",
+            performed_by="gemelo-service",
+            details={"door_name": payload.door_name, "result": "DENIED"},
+        )
         return {"valid": False}
     row = await postgres_service.validate_temporary_pin(
-        str(door["door_name"]), hash_pin(str(door["door_name"]), payload.pin_code)
+        str(door["door_name"]), hash_pin_candidates(str(door["door_name"]), payload.pin_code)
     )
     if row is None:
+        await postgres_service.write_audit_log(
+            action="PIN_VALIDATION_DENIED",
+            performed_by="gemelo-service",
+            details={"door_name": str(door["door_name"]), "result": "DENIED"},
+        )
         return {"valid": False}
     await postgres_service.write_audit_log(
         action="PIN_VALIDATED",

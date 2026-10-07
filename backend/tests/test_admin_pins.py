@@ -35,11 +35,17 @@ def test_admin_can_generate_temporary_pin_and_actor_comes_from_jwt(monkeypatch) 
         audits.append(values)
         return 1
 
+    async def get_user(username):
+        if username == "admin":
+            return {"username": username, "role": "admin", "password_hash": "unused"}
+        return None
+
     monkeypatch.setattr(postgres_service, "pool", object())
     monkeypatch.setattr(postgres_service, "close", no_close)
     monkeypatch.setattr(postgres_service, "temporary_pin_hash_exists", hash_exists)
     monkeypatch.setattr(postgres_service, "create_temporary_pin", create_pin)
     monkeypatch.setattr(postgres_service, "write_audit_log", write_audit_log)
+    monkeypatch.setattr(postgres_service, "get_user", get_user)
     admin_token, _ = create_access_token(subject="admin", role="admin")
     requested_at = datetime.now(timezone.utc)
 
@@ -82,10 +88,16 @@ def test_admin_can_revoke_temporary_pin_and_action_is_audited(monkeypatch) -> No
         audits.append(values)
         return 1
 
+    async def get_user(username):
+        if username == "admin":
+            return {"username": username, "role": "admin", "password_hash": "unused"}
+        return None
+
     monkeypatch.setattr(postgres_service, "pool", object())
     monkeypatch.setattr(postgres_service, "close", no_close)
     monkeypatch.setattr(postgres_service, "deactivate_temporary_pin", deactivate)
     monkeypatch.setattr(postgres_service, "write_audit_log", write_audit_log)
+    monkeypatch.setattr(postgres_service, "get_user", get_user)
     admin_token, _ = create_access_token(subject="admin", role="admin")
 
     with TestClient(app) as client:
@@ -100,7 +112,16 @@ def test_admin_can_revoke_temporary_pin_and_action_is_audited(monkeypatch) -> No
     assert audits[0]["performed_by"] == "admin"
 
 
-def test_operator_cannot_generate_temporary_pins() -> None:
+def test_operator_cannot_generate_temporary_pins(monkeypatch) -> None:
+    async def no_close():
+        return None
+
+    async def get_user(username):
+        return {"username": username, "role": "operator", "password_hash": "unused"}
+
+    monkeypatch.setattr(postgres_service, "pool", object())
+    monkeypatch.setattr(postgres_service, "close", no_close)
+    monkeypatch.setattr(postgres_service, "get_user", get_user)
     operator_token, _ = create_access_token(subject="operador", role="operator")
     with TestClient(app) as client:
         response = client.post(

@@ -18,11 +18,16 @@ def test_analytics_routes_are_admin_only_and_return_database_reports(monkeypatch
     async def no_error_log(**_values):
         return None
 
+    async def get_user(username):
+        role = {"admin": "admin", "operador": "operator"}.get(username)
+        return {"username": username, "role": role, "password_hash": "unused"} if role else None
+
     monkeypatch.setattr(postgres_service, "pool", object())
     monkeypatch.setattr(postgres_service, "close", no_close)
     monkeypatch.setattr(postgres_service, "analytics_history", history)
     monkeypatch.setattr(postgres_service, "error_history", errors)
     monkeypatch.setattr(postgres_service, "write_error_log", no_error_log)
+    monkeypatch.setattr(postgres_service, "get_user", get_user)
     admin, _ = create_access_token(subject="admin", role="admin")
     operator, _ = create_access_token(subject="operador", role="operator")
 

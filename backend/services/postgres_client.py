@@ -123,11 +123,14 @@ class PostgresService:
                 user = {"username": row["username"], "role": row["role"]}
         return new_token, user
 
-    async def revoke_refresh_token(self, token: str | None) -> None:
+    async def revoke_refresh_token(self, token: str | None) -> str | None:
         if self.pool is None or not token:
-            return
+            return None
         token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
-        await self.pool.execute("DELETE FROM aegis_refresh_tokens WHERE token_hash = $1", token_hash)
+        return await self.pool.fetchval(
+            "DELETE FROM aegis_refresh_tokens WHERE token_hash = $1 RETURNING username",
+            token_hash,
+        )
 
     async def persist_event(self, event: dict[str, Any], alerts: list[dict[str, Any]]) -> None:
         if self.pool is None:
@@ -245,18 +248,18 @@ class PostgresService:
         )
         return dict(row)
 
-    async def temporary_pin_hash_exists(self, door_name: str, pin_hash: str) -> bool:
+    async def temporary_pin_hash_exists(self, door_name: str, pin_hashes: tuple[str, ...]) -> bool:
         if self.pool is None:
             raise RuntimeError("PostgreSQL is not configured")
         result = await self.pool.fetchval(
             """
             SELECT EXISTS (
                 SELECT 1 FROM temporary_pins
-                WHERE door_name = $1 AND pin_hash = $2 AND is_active AND expires_at > now()
+                WHERE door_name = $1 AND pin_hash = ANY($2::text[]) AND is_active AND expires_at > now()
             )
             """,
             door_name,
-            pin_hash,
+            list(pin_hashes),
         )
         return bool(result)
 
@@ -291,18 +294,18 @@ class PostgresService:
         )
         return dict(row) if row else None
 
-    async def validate_temporary_pin(self, door_name: str, pin_hash: str) -> dict[str, Any] | None:
+    async def validate_temporary_pin(self, door_name: str, pin_hashes: tuple[str, ...]) -> dict[str, Any] | None:
         if self.pool is None:
             return None
         row = await self.pool.fetchrow(
             """
             SELECT id::text, door_name, target_user, created_by, expires_at
             FROM temporary_pins
-            WHERE door_name = $1 AND pin_hash = $2 AND is_active AND expires_at > now()
+            WHERE door_name = $1 AND pin_hash = ANY($2::text[]) AND is_active AND expires_at > now()
             ORDER BY created_at DESC LIMIT 1
             """,
             door_name,
-            pin_hash,
+            list(pin_hashes),
         )
         return dict(row) if row else None
 

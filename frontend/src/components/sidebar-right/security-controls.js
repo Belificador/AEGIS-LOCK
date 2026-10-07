@@ -106,6 +106,16 @@ export function mountSecurityControls(root, { role, onModeChange, onOpenCamera, 
   let schedule = readSchedule();
   let initialMode = readMode();
 
+  const canOperate = ["admin", "operator"].includes(role);
+  lockdownButton.disabled = !canOperate;
+  evacuationButton.disabled = !canOperate;
+  toggle.disabled = !canOperate;
+  scheduleInput.disabled = !canOperate;
+  if (!canOperate) {
+    lockdownButton.title = "La activación está reservada a Operador o Administrador";
+    evacuationButton.title = lockdownButton.title;
+  }
+
   lockdownButton.addEventListener("click", () => lockdownDialog.showModal());
   dismissLockdown.addEventListener("click", () => lockdownDialog.close("cancel"));
   lockdownDialog.addEventListener("click", (event) => {
@@ -146,7 +156,7 @@ export function mountSecurityControls(root, { role, onModeChange, onOpenCamera, 
     const enabled = Boolean(schedule?.enabled);
     toggle.textContent = enabled ? "CANCELAR CIERRE" : "PROGRAMAR CIERRE";
     scheduleInput.value = enabled ? schedule.time : scheduleInput.value || "18:00";
-    scheduleInput.disabled = enabled;
+    scheduleInput.disabled = enabled || !canOperate;
     status.textContent = enabled ? `Cierre local programado diariamente a las ${schedule.time}.` : "Sin cierre automático programado.";
   }
 

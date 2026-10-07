@@ -1,8 +1,8 @@
 const SESSION_KEY = "aegis.prototype.session.v2";
 const DEFAULT_AUTH_ENDPOINT = "https://aegis-lock-api.onrender.com/api/login";
-const DEMO_AUTH = import.meta.env.DEV && import.meta.env.VITE_DEMO_AUTH === "true";
-const AUTH_ENDPOINT = DEMO_AUTH ? "" : (import.meta.env.VITE_AUTH_API_URL || DEFAULT_AUTH_ENDPOINT);
+const AUTH_ENDPOINT = import.meta.env.VITE_AUTH_API_URL || DEFAULT_AUTH_ENDPOINT;
 const REFRESH_ENDPOINT = AUTH_ENDPOINT.replace(/\/(?:api\/login|api\/v1\/auth\/login)\/?$/, "/api/v1/auth/refresh");
+const LOGOUT_ENDPOINT = AUTH_ENDPOINT.replace(/\/(?:api\/login|api\/v1\/auth\/login)\/?$/, "/api/v1/auth/logout");
 import { primeAlertAudio } from "./components/sidebar-right/critical-alert.js";
 let activeSession = null;
 let refreshTimer = null;
@@ -16,10 +16,7 @@ export function initializeAuth({ onAuthenticated }) {
   const button = document.querySelector("#login-submit");
   const video = document.querySelector("#intro-video");
   const modeLabel = document.querySelector("#auth-mode-label");
-  if (AUTH_ENDPOINT) {
-    modeLabel.innerHTML = '<span class="status-led led-normal"></span> AUTENTICACIÓN REST CONFIGURADA';
-    document.querySelector("#demo-account-hint").hidden = true;
-  }
+  modeLabel.innerHTML = '<span class="status-led led-normal"></span> AUTENTICACIÓN EN API AEGIS';
   video.addEventListener("ended", () => revealLogin());
   video.addEventListener("error", showVideoFallback);
   if (video.error) showVideoFallback();
@@ -71,9 +68,7 @@ export function initializeAuth({ onAuthenticated }) {
     button.classList.add("is-busy");
     const fields = new FormData(form);
     try {
-      const session = AUTH_ENDPOINT
-        ? await authenticateRemote(fields)
-        : await authenticatePrototype(fields);
+      const session = await authenticateRemote(fields);
       saveSession(session);
       onAuthenticated(session.user, session);
     } catch (caught) {
@@ -87,8 +82,7 @@ export function initializeAuth({ onAuthenticated }) {
   function restoreSession() {
     try {
       const session = JSON.parse(sessionStorage.getItem(SESSION_KEY) || "null");
-      const hasRequiredToken = !AUTH_ENDPOINT || Boolean(session?.access_token);
-      if (session?.user && ["operator", "admin"].includes(session.user.role) && hasRequiredToken) {
+      if (session?.user && ["operator", "admin", "viewer"].includes(session.user.role) && session?.access_token) {
         activeSession = session;
         scheduleRefresh();
         onAuthenticated(session.user, session);
@@ -103,6 +97,7 @@ export function initializeAuth({ onAuthenticated }) {
   function logout() {
     window.clearTimeout(refreshTimer);
     refreshTimer = null;
+    const sessionToRevoke = activeSession;
     activeSession = null;
     sessionStorage.removeItem(SESSION_KEY);
     formPanel.hidden = true;
@@ -111,6 +106,14 @@ export function initializeAuth({ onAuthenticated }) {
     intro.classList.remove("is-leaving");
     loginView.hidden = false;
     error.textContent = "Sesión finalizada.";
+    if (sessionToRevoke?.access_token && sessionToRevoke?.refresh_token) {
+      void fetch(LOGOUT_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh_token: sessionToRevoke.refresh_token }),
+        keepalive: true,
+      }).catch(() => {});
+    }
     restartIntro();
   }
 
@@ -131,7 +134,7 @@ export function initializeAuth({ onAuthenticated }) {
   function scheduleRefresh() {
     window.clearTimeout(refreshTimer);
     refreshTimer = null;
-    if (!AUTH_ENDPOINT || !activeSession?.refresh_token) return;
+    if (!activeSession?.refresh_token) return;
     const expiresIn = Number(activeSession.expires_in) || 900;
     const issuedAt = Number(activeSession.issued_at) || 0;
     const refreshAt = issuedAt ? issuedAt + expiresIn * 1000 - 60_000 : Date.now() + 1000;
@@ -175,20 +178,6 @@ export function initializeAuth({ onAuthenticated }) {
   return { logout };
 }
 
-async function authenticatePrototype(fields) {
-  if (!DEMO_AUTH) throw new Error("La autenticación remota no está configurada.");
-  const username = String(fields.get("username") || "").trim();
-  const password = String(fields.get("password") || "");
-  const { validateDemoCredentials } = await import("./demo-auth.js");
-  const account = validateDemoCredentials(username, password);
-  await new Promise((resolve) => window.setTimeout(resolve, 380));
-  return {
-    demo: true,
-    access_token: null,
-    user: { id: `local-${account.role}`, username: account.username, role: account.role },
-  };
-}
-
 async function authenticateRemote(fields) {
   let response;
   try {
@@ -208,7 +197,7 @@ async function authenticateRemote(fields) {
   if (!response.ok) throw new Error(result.detail || payload.detail || "Credenciales o perfil no válidos.");
   const serverUser = payload.user || result.user || {};
   const role = serverUser.role;
-  if (!["operator", "admin"].includes(role)) {
+  if (!["operator", "admin", "viewer"].includes(role)) {
     throw new Error("La cuenta no tiene un perfil de Operador o Administrador asignado.");
   }
   const accessToken = payload.access_token || payload.token || result.access_token;

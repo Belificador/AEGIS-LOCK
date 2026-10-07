@@ -31,17 +31,11 @@ frontend/
 
 ## Inicio rápido del prototipo
 
-La interfaz local conserva estas cuentas de demostración; el perfil se obtiene
-del registro de cuenta y no de un rol elegido en el navegador:
-
-| Perfil | Usuario | Contraseña |
-|---|---|---|
-| Operador | `operador` | `AegisOperador2026!` |
-| Administrador | `admin` | `AegisAdmin2026!` |
-
-Son credenciales públicas de prototipo y no deben usarse fuera de la presentación.
-En Render se conservan como usuarios de prueba, pero el backend verifica sus
-contraseñas y guarda únicamente hashes en PostgreSQL.
+La interfaz autentica siempre contra la API AEGIS; el frontend no crea sesiones
+simuladas ni contiene contraseñas. El rol se obtiene de PostgreSQL y no de un
+valor elegido en el navegador. Usa únicamente una cuenta de prueba cuya
+contraseña se te haya entregado por un canal privado; no se publican credenciales
+en este repositorio.
 
 ```bash
 cd frontend
@@ -64,7 +58,10 @@ desde el frontend local.
 
 El formulario envía las credenciales a Aegis y obtiene el JWT que exige
 `/ws/dashboard`. Configura estos valores en el entorno de build del Static Site
-de Render (las variables `VITE_*` se incorporan al compilar):
+de Render (las variables `VITE_*` se incorporan al JavaScript y son públicas):
+
+El navegador llama a FastAPI; FastAPI valida la sesión y consulta PostgreSQL. El
+navegador nunca recibe la URL ni las credenciales de la base de datos.
 
 ```env
 VITE_AUTH_API_URL=https://aegis-lock-api.onrender.com/api/login
@@ -89,17 +86,33 @@ cp backend/.env.example backend/.env
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+pip install -r requirements-dev.txt
+pip-audit -r requirements.txt
 uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000 --ws-max-size 1048576
 ```
 
-En Render crea `DATABASE_URL`, `JWT_SECRET`, `TELEMETRY_API_KEY`,
-`GEMELO_MEDIA_BASE_URL`,
-`DEMO_OPERATOR_PASSWORD`, `DEMO_ADMIN_PASSWORD` y `ALLOWED_ORIGINS`. Guarda como
-secretos los valores sensibles. Para las dos cuentas de prueba usa las
-contraseñas actuales de la tabla de arriba. Al iniciar, el backend crea el
-esquema y siembra los usuarios con hash scrypt; no pegues la URL de conexión en
-el frontend ni en el repositorio. `/health` comprueba también la conexión a la
-base.
+En Render configura `ENVIRONMENT=production`, `DATABASE_URL`, `JWT_SECRET`,
+`PIN_ENCRYPTION_KEY`, `RATE_LIMIT_STORAGE_URI`, `TELEMETRY_API_KEY`,
+`GEMELO_MEDIA_BASE_URL`, `DEMO_OPERATOR_PASSWORD`, `DEMO_ADMIN_PASSWORD` y
+`ALLOWED_ORIGINS`. Usa contraseñas aleatorias, únicas por entorno y guardadas
+solo como Render Secrets. `PIN_ENCRYPTION_KEY` debe ser independiente de
+`JWT_SECRET`; los PIN cifrados antes de esa clave nueva se descifran con el
+`JWT_SECRET` existente, así que no lo rotes hasta que esos PIN expiren o se
+re-emitan. `RATE_LIMIT_STORAGE_URI` debe usar la URL interna de un Render Key
+Value privado con política `noeviction` para no expulsar contadores activos.
+Al iniciar, el backend crea el esquema y guarda hashes scrypt de las contraseñas;
+nunca pongas secretos en variables `VITE_*` ni en el frontend. No despliegues la
+versión endurecida hasta cargar `PIN_ENCRYPTION_KEY` y la conexión interna de
+Key Value en el servicio API.
+`/health` comprueba también la conexión a la base.
+
+Antes del deploy endurecido, crea un Key Value en la misma región del servicio
+API, con acceso externo deshabilitado y política `noeviction`; copia su URL
+interna en `RATE_LIMIT_STORAGE_URI` como secreto del servicio. Para generar una
+clave localmente usa `python -c 'import secrets; print(secrets.token_urlsafe(48))'`
+y registra cada resultado directamente en Render, nunca en Git. Rota también las
+contraseñas demo usadas por revisiones antiguas, porque permanecen en el historial
+Git aunque ya no estén en los archivos actuales.
 
 El simulador se conecta al relay del servidor del gemelo en `/ws/telemetry` con
 la sesión web existente. `server.js` abre el WebSocket saliente a
@@ -148,9 +161,28 @@ El servidor FastAPI también incluye:
   perfil Administrador puede liberar el estado. No envía comandos físicos ni
   reemplaza un sistema de control de acceso certificado.
 
+### Señales de seguridad que deben vigilarse
+
+- Ráfagas de `LOGIN_FAILED`, `REFRESH_REJECTED`, `401`, `403` y `429`, agrupadas
+  por cuenta, IP y ruta. Nunca se registran contraseñas ni tokens.
+- Repeticiones de `PIN_VALIDATION_DENIED` o `LOCKOUT` por puerta; correlaciona
+  con generación/revocación de PINes y quién hizo el cambio.
+- `WebSocket Authentication Failure`, rechazos por origen, desconexiones
+  reiteradas y `telemetry_validation_rejected` por fuente.
+- Picos de intrusión, pérdida de energía, temperatura crítica, selección
+  inusual de cámaras y activación/liberación de protocolos.
+
+Los eventos de auditoría de cuentas, PINes y modos se guardan en PostgreSQL; los
+rechazos de tráfico y límites aparecen como logs estructurados de Render. Configura
+alertas operativas sobre ráfagas, no sobre una sola señal aislada.
+
 ## Verificación
 
 ```bash
 .venv/bin/pytest backend/tests -q
-cd frontend && npm test && npm run build
+pip-audit -r requirements.txt
+pip-audit -r requirements-dev.txt
+npm audit --prefix frontend
+npm test --prefix frontend
+npm run build --prefix frontend
 ```

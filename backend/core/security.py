@@ -5,7 +5,7 @@ from typing import Any
 from uuid import uuid4
 
 from fastapi import HTTPException, status
-from jose import JWTError, jwt
+import jwt
 
 from backend.config import get_settings
 
@@ -39,9 +39,9 @@ def decode_access_token(token: str) -> dict[str, Any]:
             issuer="aegis-lock-api",
         )
         if claims.get("type") != "access" or not claims.get("sub"):
-            raise JWTError("Invalid access token")
+            raise jwt.InvalidTokenError("Invalid access token")
         return claims
-    except JWTError as exc:
+    except jwt.InvalidTokenError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Credenciales inválidas o token expirado",

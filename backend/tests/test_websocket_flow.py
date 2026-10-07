@@ -20,10 +20,16 @@ def test_server_relay_ingests_validates_alerts_and_broadcasts(monkeypatch) -> No
     async def no_close():
         return None
 
+    async def get_user(username):
+        if username == "viewer-1":
+            return {"username": username, "role": "viewer", "password_hash": "unused"}
+        return None
+
     monkeypatch.setattr(postgres_service, "pool", object())
     monkeypatch.setattr(postgres_service, "persist_event", persist_event)
     monkeypatch.setattr(postgres_service, "latest_events", no_latest_events)
     monkeypatch.setattr(postgres_service, "close", no_close)
+    monkeypatch.setattr(postgres_service, "get_user", get_user)
     monkeypatch.setattr(telemetry, "get_settings", lambda: Settings(telemetry_api_key="test-server-secret"))
 
     raw_payload = (
@@ -58,7 +64,20 @@ def test_server_relay_ingests_validates_alerts_and_broadcasts(monkeypatch) -> No
         assert events[0][0]["tipo_evento"] == "temperatura"
 
 
-def test_dashboard_websocket_echoes_heartbeat_round_trip() -> None:
+def test_dashboard_websocket_echoes_heartbeat_round_trip(monkeypatch) -> None:
+    async def no_close():
+        return None
+
+    async def no_latest_events():
+        return []
+
+    async def get_user(username):
+        return {"username": username, "role": "operator", "password_hash": "unused"}
+
+    monkeypatch.setattr(postgres_service, "pool", object())
+    monkeypatch.setattr(postgres_service, "close", no_close)
+    monkeypatch.setattr(postgres_service, "latest_events", no_latest_events)
+    monkeypatch.setattr(postgres_service, "get_user", get_user)
     token, _ = create_access_token(subject="operator-1", role="operator")
     with TestClient(app) as client:
         with client.websocket_connect(

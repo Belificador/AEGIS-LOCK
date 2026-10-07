@@ -11,6 +11,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
 
 from backend.config import get_settings
+from backend.core.log_safety import redact_sensitive_text
 from backend.routers.ws_manager import authenticate_websocket, manager
 from backend.services.postgres_client import postgres_service
 from backend.services.rules_engine import evaluate_event
@@ -24,8 +25,20 @@ router = APIRouter(tags=["telemetry"])
 @router.websocket("/ws/telemetry")
 async def telemetry_socket(websocket: WebSocket) -> None:
     settings = get_settings()
+    rate_limiter = getattr(websocket.app.state, "websocket_rate_limiter", None)
+    client_ip = websocket.client.host if websocket.client else "unknown"
     authorization = websocket.headers.get("authorization", "")
+    claims: dict[str, Any] | None = None
     if authorization.startswith("Bearer "):
+        if rate_limiter is not None:
+            try:
+                if not await rate_limiter.allow(f"ip:{client_ip}", "telemetry-auth", limit=20, window_seconds=60):
+                    await websocket.close(code=4429, reason="Rate limit exceeded")
+                    return
+            except Exception:
+                logger.exception("No se pudo consultar el rate limiter del emisor")
+                await websocket.close(code=1013, reason="Rate limiter unavailable")
+                return
         publisher = "gemelo-service"
         api_key = authorization.removeprefix("Bearer ")
         expected_key = settings.telemetry_api_key or ""
@@ -46,7 +59,7 @@ async def telemetry_socket(websocket: WebSocket) -> None:
             return
         await websocket.accept()
     else:
-        claims = await authenticate_websocket(websocket)
+        claims = await authenticate_websocket(websocket, purpose="telemetry")
         if claims is None:
             return
         if claims.get("role") not in {"admin", "operator"}:
@@ -63,8 +76,21 @@ async def telemetry_socket(websocket: WebSocket) -> None:
         await websocket.send_json({"kind": "connection", "status": "authenticated"})
         while True:
             try:
-                raw_text = await websocket.receive_text()
-                if len(raw_text.encode("utf-8")) > settings.max_request_bytes:
+                if claims and time.time() >= int(claims["exp"]):
+                    await websocket.close(code=4401, reason="Access token expired")
+                    return
+                raw_text = await asyncio.wait_for(websocket.receive_text(), timeout=5) if claims else await websocket.receive_text()
+                if rate_limiter is not None:
+                    allowed = await rate_limiter.allow(
+                        f"ip:{client_ip}", "telemetry-frame-ip", limit=1200, window_seconds=60,
+                    ) and await rate_limiter.allow(
+                        f"publisher:{publisher}", "telemetry-frame-publisher", limit=600, window_seconds=60,
+                    )
+                    if not allowed:
+                        await websocket.send_json({"kind": "error", "detail": "Rate limit exceeded"})
+                        await websocket.close(code=4429, reason="Rate limit exceeded")
+                        return
+                if len(raw_text.encode("utf-8")) > settings.max_telemetry_event_bytes:
                     await websocket.send_json({"kind": "error", "detail": "Evento demasiado grande"})
                     continue
                 raw_event = json.loads(raw_text)
@@ -73,9 +99,16 @@ async def telemetry_socket(websocket: WebSocket) -> None:
                     continue
                 event, event_data = parse_telemetry(raw_event)
                 persisted_event_data = copy.deepcopy(event_data)
+            except asyncio.TimeoutError:
+                continue
             except (ValueError, ValidationError) as exc:
                 await websocket.send_json({"kind": "error", "detail": "Evento de telemetría inválido"})
-                logger.info("Evento de telemetría rechazado: %s", str(exc)[:300])
+                logger.warning("telemetry_validation_rejected publisher=%s reason=%s", publisher[:80], type(exc).__name__)
+                continue
+
+            if publisher != "gemelo-service" and event.event_type != "camera_selected":
+                await websocket.send_json({"kind": "error", "detail": "Este token solo puede publicar selección de cámara"})
+                logger.warning("telemetry_publish_denied publisher=%s type=%s", publisher[:80], event.event_type)
                 continue
 
             if event.event_type == "camera_selected":
@@ -93,14 +126,17 @@ async def telemetry_socket(websocket: WebSocket) -> None:
                     secret=settings.telemetry_api_key or "",
                     expires_at=int(time.time()) + 3600,
                 )
-                if feed_url:
-                    metadata = event_data.get("metadata") if isinstance(event_data.get("metadata"), dict) else {}
-                    event_data["metadata"] = {**metadata, "camera_id": camera_id, "feed_url": feed_url}
-                    await postgres_service.write_audit_log(
-                        action="CAMERA_SELECTED",
-                        performed_by=publisher,
-                        details={"camera_id": camera_id, "zone": event_data.get("zona") or event_data.get("zone")},
-                    )
+                if not feed_url:
+                    await websocket.send_json({"kind": "error", "detail": "Cámara no reconocida o feed no configurado"})
+                    logger.warning("camera_selection_denied publisher=%s", publisher[:80])
+                    continue
+                metadata = event_data.get("metadata") if isinstance(event_data.get("metadata"), dict) else {}
+                event_data["metadata"] = {**metadata, "camera_id": camera_id, "feed_url": feed_url}
+                await postgres_service.write_audit_log(
+                    action="CAMERA_SELECTED",
+                    performed_by=publisher,
+                    details={"camera_id": camera_id, "zone": event_data.get("zona") or event_data.get("zone")},
+                )
 
             alerts = evaluate_event(event)
             if event.event_type in {"acceso_pin", "access_pin"}:
@@ -135,8 +171,8 @@ async def telemetry_socket(websocket: WebSocket) -> None:
             logger.info(
                 "[TELEMETRÍA RECIBIDA] Tipo: %s | Zona: %s | Valor: %s | persisted=%s",
                 event.event_type,
-                raw_event.get("zona", raw_event.get("zone")),
-                raw_event.get("valor", raw_event.get("temperature_c")),
+                event_data.get("zona", event_data.get("zone", "GLOBAL")),
+                redact_sensitive_text(str(event_data.get("valor", event_data.get("temperature_c", ""))))[:120],
                 persisted,
             )
     except WebSocketDisconnect as exc:
