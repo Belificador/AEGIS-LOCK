@@ -50,7 +50,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "get_recent_activity",
-            "description": "Lee los eventos recientes como resúmenes, sin payloads JSON ni datos personales.",
+            "description": "Lee la bitácora unificada de telemetría, alertas, auditoría y errores recientes, como resúmenes sin payloads ni datos personales.",
             "parameters": {
                 "type": "object",
                 "properties": {"limit": {"type": "integer", "minimum": 1, "maximum": 20}},

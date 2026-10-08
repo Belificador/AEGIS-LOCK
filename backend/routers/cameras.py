@@ -20,7 +20,7 @@ async def camera_catalog(
     _: Annotated[dict[str, Any], Depends(current_claims)],
 ) -> list[dict[str, str]]:
     return [
-        {"camera_id": camera["camera_id"], "zone": camera["zone"]}
+        {"camera_id": camera["camera_id"], "name": camera["name"], "zone": camera["zone"]}
         for camera in CAMERAS
     ]
 

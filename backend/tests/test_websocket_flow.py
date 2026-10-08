@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi.testclient import TestClient
 
 from backend.config import Settings
@@ -12,6 +14,7 @@ def test_server_relay_ingests_validates_alerts_and_broadcasts(monkeypatch) -> No
     events = []
 
     async def persist_event(event, alerts):
+        await asyncio.sleep(0.25)
         events.append((event, alerts))
 
     async def no_latest_events():
@@ -60,8 +63,10 @@ def test_server_relay_ingests_validates_alerts_and_broadcasts(monkeypatch) -> No
         assert broadcast["event"]["temperature_c"] == 39
         assert broadcast["alerts"][0]["code"] == "HIGH_TEMPERATURE"
         assert acknowledgement["kind"] == "ack"
-        assert acknowledgement["persisted"] is True
-        assert events[0][0]["tipo_evento"] == "temperatura"
+        assert acknowledgement["persisted"] is False
+        assert acknowledgement["queued_for_persistence"] is True
+        assert events == []
+    assert events[0][0]["tipo_evento"] == "temperatura"
 
 
 def test_dashboard_websocket_echoes_heartbeat_round_trip(monkeypatch) -> None:

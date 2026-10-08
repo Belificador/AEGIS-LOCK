@@ -3,7 +3,7 @@ import { mountEnergyMetric } from "./metrics/energy.js";
 import { mountOccupancyMetric } from "./metrics/occupancy.js";
 import { mountTemperatureMetric } from "./metrics/temperature.js";
 
-export function mountSidebarLeft(root, { session } = {}) {
+export function mountSidebarLeft(root, { session, user } = {}) {
   root.innerHTML = `
     <div class="sidebar-title"><div><span class="sidebar-kicker">TELEMETRY / LIVE FEED</span><h2>Señales del modelo</h2></div><span class="signal-status"><i class="status-led led-offline"></i><b id="signal-status">MODELO NO CONECTADO</b></span></div>
     <div id="metrics-stack" class="metrics-stack"></div>
@@ -12,7 +12,7 @@ export function mountSidebarLeft(root, { session } = {}) {
   const energy = mountEnergyMetric(stack);
   const occupancy = mountOccupancyMetric(stack);
   const temperature = mountTemperatureMetric(stack);
-  mountChat(root.querySelector("#sidebar-chat-root"), session);
+  const chat = mountChat(root.querySelector("#sidebar-chat-root"), session, user);
   return {
     update(event) {
       energy.update(event);
@@ -26,5 +26,6 @@ export function mountSidebarLeft(root, { session } = {}) {
       occupancy.setConnection(connected);
       temperature.setConnection(connected);
     },
+    destroy() { chat.destroy(); },
   };
 }

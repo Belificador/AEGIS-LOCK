@@ -62,7 +62,7 @@ export function mountSecurityControls(root, { role, onModeChange, onOpenCamera, 
 
   for (const camera of CAMERA_MARKERS) {
     const number = Number(/^CAM_(\d+)_/.exec(camera.cameraId)?.[1]);
-    const shortName = camera.cameraId.replace(/^CAM_\d+_/, "").replaceAll("_", " ");
+    const shortName = camera.shortName || camera.cameraId.replace(/^CAM_\d+_/, "").replaceAll("_", " ");
     const channel = document.createElement("button");
     channel.type = "button";
     channel.className = "camera-channel-button";
@@ -189,7 +189,7 @@ export function mountSecurityControls(root, { role, onModeChange, onOpenCamera, 
     selectedCameraId = id;
     const marker = CAMERA_MARKERS.find((item) => item.cameraId === id);
     selectedCamera = marker
-      ? { ...marker, id, cameraId: id, numericId: Number(/^CAM_(\d+)_/.exec(id)?.[1]), shortName: id.replace(/^CAM_\d+_/, "").replaceAll("_", " "), location }
+      ? { ...marker, id, cameraId: id, numericId: Number(/^CAM_(\d+)_/.exec(id)?.[1]), shortName: marker.shortName || id.replace(/^CAM_\d+_/, "").replaceAll("_", " "), location }
       : { id, cameraId: id, numericId: Number(/^CAM_(\d+)_/.exec(id)?.[1]), shortName: id, zone: location, location };
     cameraPreview.disabled = false;
     cameraPreviewName.textContent = selectedCamera.shortName;

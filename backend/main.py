@@ -27,6 +27,7 @@ async def lifespan(app: FastAPI):
     app.state.settings = settings
     app.state.latest_event = None
     app.state.websocket_rate_limiter = WebSocketRateLimiter(settings.rate_limit_storage_uri or "memory://")
+    await ws_manager.manager.start(settings.rate_limit_storage_uri, app.state.websocket_rate_limiter)
     try:
         await postgres_service.connect(
             settings.database_url,
@@ -35,6 +36,8 @@ async def lifespan(app: FastAPI):
         )
         yield
     finally:
+        await telemetry.close_telemetry_persistence()
+        await ws_manager.manager.close()
         await app.state.websocket_rate_limiter.close()
         await postgres_service.close()
 

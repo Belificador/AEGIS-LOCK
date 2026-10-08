@@ -1,5 +1,6 @@
 import { mountHeader } from "./components/header/header.js";
 import { mountCriticalAlert } from "./components/sidebar-right/critical-alert.js";
+import { mountGlobalAlertBanner } from "./components/global-alert-banner.js";
 import { mountSidebarLeft } from "./components/sidebar-left/sidebar-left.js";
 import { mountSidebarRight } from "./components/sidebar-right/sidebar-right.js";
 import { mountViewport } from "./components/viewport/viewport.js";
@@ -47,7 +48,8 @@ export function mountDashboard({ user, session, onLogout, wsUrl }) {
       }
     },
   });
-  const sidebarLeft = mountSidebarLeft(document.querySelector("#sidebar-left-root"), { session });
+  const globalAlerts = mountGlobalAlertBanner();
+  const sidebarLeft = mountSidebarLeft(document.querySelector("#sidebar-left-root"), { session, user });
   const viewport = mountViewport(document.querySelector("#viewport-root"), { onCameraSelected: openCamera });
   const right = mountSidebarRight(document.querySelector("#sidebar-right-root"), {
     role: user.role,
@@ -161,7 +163,7 @@ export function mountDashboard({ user, session, onLogout, wsUrl }) {
       id: cameraId,
       cameraId,
       numericId: Number.isFinite(number) ? number : null,
-      shortName: cameraId.replace(/^CAM_\d+_/, "").replaceAll("_", " "),
+      shortName: camera.shortName || cameraId.replace(/^CAM_\d+_/, "").replaceAll("_", " "),
       location: camera.zone || camera.location || "Ubicación pendiente",
     };
     right.updateCamera({
@@ -191,6 +193,7 @@ export function mountDashboard({ user, session, onLogout, wsUrl }) {
 
     const event = payload.event;
     const alerts = Array.isArray(payload.alerts) ? payload.alerts : [];
+    globalAlerts.ingest({ event, alerts });
     criticalAlerts.ingest({ event, alerts });
     sidebarLeft.update(event);
     viewport.update({ ...event, alerts });
@@ -222,11 +225,13 @@ export function mountDashboard({ user, session, onLogout, wsUrl }) {
     cameraPublisher?.destroy();
     adminDiagnostics?.dispose();
     criticalAlerts.dispose();
+    globalAlerts.dispose();
     cameraModal.dispose();
     panelExpansion.dispose();
     sidebarResize.destroy();
     viewport.destroy();
     right.destroy();
+    sidebarLeft.destroy();
     header.destroy();
     document.querySelectorAll("dialog[open]").forEach((dialog) => dialog.close());
     window.clearInterval(scheduleTimer);

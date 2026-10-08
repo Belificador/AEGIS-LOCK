@@ -1,7 +1,9 @@
+import { buildArgusGreeting } from "./greeting.js";
+
 const AUTH_URL = import.meta.env.VITE_AUTH_API_URL || "https://aegis-lock-api.onrender.com/api/login";
 const API_ROOT = AUTH_URL.replace(/\/(?:api\/login|api\/v1\/auth\/login)\/?$/, "");
 
-export function mountChat(root, session) {
+export function mountChat(root, session, user) {
   root.innerHTML = `
     <section class="chat-panel" aria-labelledby="assistant-title">
       <div class="chat-panel-heading">
@@ -21,6 +23,18 @@ export function mountChat(root, session) {
   const thread = root.querySelector("#chat-thread");
   const form = root.querySelector("#assistant-form");
   const input = root.querySelector("#assistant-message");
+  const prompt = thread.querySelector(".chat-prompt");
+  const listeners = new AbortController();
+
+  function updateGreeting() {
+    if (prompt?.isConnected) prompt.textContent = buildArgusGreeting(user);
+  }
+
+  updateGreeting();
+  input.addEventListener("focus", updateGreeting, { signal: listeners.signal });
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) updateGreeting();
+  }, { signal: listeners.signal });
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -57,4 +71,6 @@ export function mountChat(root, session) {
     thread.append(bubble);
     thread.scrollTop = thread.scrollHeight;
   }
+
+  return { destroy() { listeners.abort(); } };
 }

@@ -1,5 +1,8 @@
 """Deterministic, privacy-minimized report aggregates for Argus."""
 
+import asyncio
+import json
+import re
 from datetime import datetime, time, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -94,30 +97,67 @@ async def get_recent_activity(limit: int = 12) -> list[dict[str, Any]]:
     pool = postgres_service.pool
     if pool is None:
         raise RuntimeError("PostgreSQL no está disponible para Argus")
-    rows = await pool.fetch(
-        "SELECT received_at, event, alerts FROM security_events ORDER BY received_at DESC LIMIT $1",
-        max(1, min(limit, 20)),
+    limit = max(1, min(limit, 20))
+    telemetry_rows, audit_rows, error_rows = await asyncio.gather(
+        pool.fetch(
+            "SELECT received_at, event, alerts FROM security_events ORDER BY received_at DESC LIMIT $1",
+            limit,
+        ),
+        pool.fetch(
+            "SELECT timestamp, action, details FROM audit_logs ORDER BY timestamp DESC LIMIT $1",
+            limit,
+        ),
+        pool.fetch(
+            "SELECT timestamp, error_type FROM error_logs ORDER BY timestamp DESC LIMIT $1",
+            limit,
+        ),
     )
-    result = []
-    for row in rows:
+
+    activity: list[tuple[datetime, dict[str, Any]]] = []
+    for row in telemetry_rows:
         event = row["event"]
         if isinstance(event, str):
-            import json
             event = json.loads(event)
         event_type = str(event.get("tipo_evento") or event.get("event_type") or "telemetry")
         zone = _safe_zone(event.get("zona") or event.get("zone") or "GLOBAL")
         value = event.get("valor")
         alerts = row["alerts"]
         if isinstance(alerts, str):
-            import json
             alerts = json.loads(alerts)
-        result.append({
-            "time": row["received_at"].isoformat(),
+        timestamp = row["received_at"]
+        activity.append((timestamp, {
+            "time": timestamp.isoformat(),
             "activity": _activity_label(event_type, value, event),
             "zone": zone,
             "priority": _alert_priority(alerts),
-        })
-    return result
+        }))
+
+    for row in audit_rows:
+        timestamp = row["timestamp"]
+        details = row["details"]
+        if isinstance(details, str):
+            details = json.loads(details)
+        details = details if isinstance(details, dict) else {}
+        action = str(row["action"])
+        activity.append((timestamp, {
+            "time": timestamp.isoformat(),
+            "activity": _audit_activity_label(action),
+            "zone": _safe_zone(details.get("zone") or details.get("zona") or "GLOBAL"),
+            "priority": "critical" if action in {"PIN_ACCESS_DENIED", "LOGIN_FAILED", "REFRESH_REJECTED"} else "system",
+        }))
+
+    for row in error_rows:
+        timestamp = row["timestamp"]
+        error_type = _safe_error_type(row["error_type"])
+        activity.append((timestamp, {
+            "time": timestamp.isoformat(),
+            "activity": f"Error de sistema · {error_type}",
+            "zone": "GLOBAL",
+            "priority": "warning",
+        }))
+
+    activity.sort(key=lambda item: item[0], reverse=True)
+    return [item for _, item in activity[:limit]]
 
 
 async def summarize_previous_local_day(*, pool: Any = None) -> dict[str, Any]:
@@ -334,3 +374,35 @@ def _alert_priority(alerts: Any) -> str:
     if "lockdown" in severities or "warning" in severities:
         return "warning"
     return "system"
+
+
+def _audit_activity_label(action: str) -> str:
+    labels = {
+        "PIN_ACCESS_GRANTED": "Acceso autorizado",
+        "PIN_ACCESS_DENIED": "Acceso denegado",
+        "PIN_VALIDATED": "PIN validado",
+        "PIN_VALIDATION_DENIED": "PIN rechazado",
+        "PIN_GENERATED": "PIN temporal generado",
+        "PIN_REVOKED": "PIN temporal revocado",
+        "LOGIN_SUCCEEDED": "Inicio de sesión correcto",
+        "LOGIN_FAILED": "Inicio de sesión rechazado",
+        "LOGOUT": "Cierre de sesión",
+        "REFRESH_REJECTED": "Renovación de sesión rechazada",
+        "LOCKDOWN_ACTIVATED": "Lockdown activado",
+        "LOCKDOWN_RELEASED": "Lockdown liberado",
+        "EVACUATION_ACTIVATED": "Evacuación activada",
+        "EVACUATION_RELEASED": "Evacuación liberada",
+        "ALARM_ACKNOWLEDGED": "Alerta acusada recibo",
+        "CAMERA_SELECTED": "Cámara seleccionada",
+        "ARGUS_REPORT_SENT_TELEGRAM": "Informe de Argus enviado",
+    }
+    return labels.get(action, "Acción de seguridad registrada")
+
+
+def _safe_error_type(value: Any) -> str:
+    if not isinstance(value, str):
+        return "Error de sistema"
+    normalized = value.strip()[:80]
+    if not normalized or not re.fullmatch(r"[A-Za-z0-9 _.-]+", normalized):
+        return "Error de sistema"
+    return normalized

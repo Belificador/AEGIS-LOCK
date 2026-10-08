@@ -6,12 +6,12 @@ import hmac
 import json
 import logging
 import time
+from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
 
 from backend.config import get_settings
-from backend.core.log_safety import redact_sensitive_text
 from backend.routers.ws_manager import authenticate_websocket, manager
 from backend.services.argus_notifications import (
     notify_access_entry,
@@ -25,6 +25,8 @@ from backend.services.camera_catalog import signed_camera_url
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["telemetry"])
+_PERSISTENCE_TASK_LIMIT = 256
+_persistence_tasks: set[asyncio.Task[None]] = set()
 
 
 @router.websocket("/ws/telemetry")
@@ -103,6 +105,7 @@ async def telemetry_socket(websocket: WebSocket) -> None:
                     await websocket.send_json({"kind": "error", "detail": "El evento debe ser un objeto JSON"})
                     continue
                 event, event_data = parse_telemetry(raw_event)
+                received_monotonic = time.monotonic()
                 metadata = event_data.get("metadata") if isinstance(event_data.get("metadata"), dict) else {}
                 access_target_user = metadata.pop("target_user", None)
                 event_data["metadata"] = metadata
@@ -187,33 +190,52 @@ async def telemetry_socket(websocket: WebSocket) -> None:
             payload = {"kind": "telemetry", "event": event_data, "alerts": alerts}
             websocket.app.state.latest_event = payload
             persisted = False
-            try:
-                await asyncio.wait_for(postgres_service.persist_event(persisted_event_data, alerts), timeout=4)
-                persisted = postgres_service.pool is not None
-                if persisted_event_data.get("energy_kwh") is not None:
-                    event_data["energy_kwh"] = persisted_event_data["energy_kwh"]
-                if persisted and event.occupancy is not None:
-                    notification = asyncio.create_task(
-                        notify_evacuation_occupancy(rate_limiter),
-                        name="argus-telegram-evacuation-count",
-                    )
-                    notification.add_done_callback(_log_notification_failure)
-            except Exception:
-                logger.exception("No se pudo persistir evento de telemetría")
-
             await manager.broadcast(payload)
+            broadcast_ms = round((time.monotonic() - received_monotonic) * 1000)
+            persistence_queued = False
+            if postgres_service.pool is not None:
+                persistence_queued = await manager.enqueue_persistence(persisted_event_data, alerts)
+                if not persistence_queued and len(_persistence_tasks) < _PERSISTENCE_TASK_LIMIT:
+                    task = asyncio.create_task(
+                        _persist_event_background(
+                            copy.deepcopy(persisted_event_data),
+                            copy.deepcopy(alerts),
+                            websocket.app,
+                            rate_limiter,
+                            event.occupancy is not None,
+                        ),
+                        name=f"telemetry-persist-{event.event_id}",
+                    )
+                    _persistence_tasks.add(task)
+                    task.add_done_callback(_persistence_tasks.discard)
+                    persistence_queued = True
+                elif not persistence_queued:
+                    try:
+                        await asyncio.wait_for(postgres_service.persist_event(persisted_event_data, alerts), timeout=4)
+                        persisted = True
+                        if event.occupancy is not None:
+                            notification = asyncio.create_task(
+                                notify_evacuation_occupancy(rate_limiter),
+                                name="argus-telegram-evacuation-count",
+                            )
+                            notification.add_done_callback(_log_notification_failure)
+                    except Exception:
+                        logger.exception("No se pudo persistir evento de telemetría; cola de persistencia llena")
             await websocket.send_json({
                 "kind": "ack",
                 "event_id": event_data["event_id"],
                 "persisted": persisted,
+                "queued_for_persistence": persistence_queued,
                 "alerts": alerts,
             })
             logger.info(
-                "[TELEMETRÍA RECIBIDA] Tipo: %s | Zona: %s | Valor: %s | persisted=%s",
+                "telemetry_broadcast_dispatched event_id=%s type=%s zone=%s dispatch_ms=%s persisted=%s queued=%s",
+                event_data["event_id"],
                 event.event_type,
                 event_data.get("zona", event_data.get("zone", "GLOBAL")),
-                redact_sensitive_text(str(event_data.get("valor", event_data.get("temperature_c", ""))))[:120],
+                broadcast_ms,
                 persisted,
+                persistence_queued,
             )
     except WebSocketDisconnect as exc:
         if exc.code not in {1000, 1001}:
@@ -240,3 +262,58 @@ def _log_notification_failure(task: asyncio.Task[None]) -> None:
     error = task.exception()
     if error is not None:
         logger.warning("argus_alert_task_failed error=%s", type(error).__name__)
+
+
+async def _persist_event_background(
+    event: dict[str, Any],
+    alerts: list[dict[str, Any]],
+    app: Any,
+    rate_limiter: Any,
+    should_notify_occupancy: bool,
+) -> None:
+    for attempt in range(3):
+        try:
+            await asyncio.wait_for(postgres_service.persist_event(event, alerts), timeout=4)
+            latest = getattr(app.state, "latest_event", None)
+            if (
+                isinstance(latest, dict)
+                and isinstance(latest.get("event"), dict)
+                and latest["event"].get("event_id") == event.get("event_id")
+                and event.get("energy_kwh") is not None
+            ):
+                latest["event"]["energy_kwh"] = event["energy_kwh"]
+                await manager.cache_latest_event(latest)
+            if should_notify_occupancy:
+                notification = asyncio.create_task(
+                    notify_evacuation_occupancy(rate_limiter),
+                    name="argus-telegram-evacuation-count",
+                )
+                notification.add_done_callback(_log_notification_failure)
+            return
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                "telemetry_persist_retry event_id=%s attempt=%s error=%s",
+                event.get("event_id"),
+                attempt + 1,
+                type(exc).__name__,
+            )
+            if attempt < 2:
+                await asyncio.sleep(0.25 * (2 ** attempt))
+    try:
+        await postgres_service.write_error_log(
+            error_type="Telemetry Persistence Failure",
+            description=f"Persistence retries exhausted for event {str(event.get('event_id', ''))[:80]}",
+        )
+    except Exception:
+        logger.exception("No se pudo registrar fallo definitivo de persistencia de telemetría")
+
+
+async def close_telemetry_persistence() -> None:
+    if not _persistence_tasks:
+        return
+    try:
+        await asyncio.wait_for(asyncio.gather(*tuple(_persistence_tasks), return_exceptions=True), timeout=10)
+    except asyncio.TimeoutError:
+        logger.warning("telemetry_persistence_shutdown_timeout pending=%s", len(_persistence_tasks))
