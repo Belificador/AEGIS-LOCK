@@ -25,6 +25,10 @@ class CameraArguments(StrictModel):
     camera_id: str = Field(min_length=1, max_length=80, pattern=r"^[A-Za-z0-9_-]+$")
 
 
+class TelegramReportArguments(StrictModel):
+    days: int = Field(default=1, ge=1, le=7, strict=True)
+
+
 TOOLS = [
     {
         "type": "function",
@@ -84,6 +88,19 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "send_report_to_telegram",
+            "description": "Envía un informe agregado de AEGIS al Telegram privado vinculado al Administrador que lo pidió. Úsala solo ante una solicitud explícita de enviar el informe a Telegram.",
+            "parameters": {
+                "type": "object",
+                "properties": {"days": {"type": "integer", "minimum": 1, "maximum": 7}},
+                "required": ["days"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "generate_temporary_pin",
             "description": "Genera un PIN temporal para una puerta catalogada. Solo para Administrador y ante una petición explícita del usuario.",
             "parameters": {
@@ -101,11 +118,32 @@ TOOLS = [
 ]
 
 
-def tools_for_role(role: str) -> list[dict[str, Any]]:
-    return TOOLS if role == "admin" else TOOLS[:-1]
+def tools_for_role(
+    role: str,
+    *,
+    channel: str | None = None,
+    allow_telegram_report: bool = False,
+) -> list[dict[str, Any]]:
+    available = []
+    for tool in TOOLS:
+        name = tool["function"]["name"]
+        if name == "generate_temporary_pin" and (role != "admin" or channel == "telegram"):
+            continue
+        if name == "send_report_to_telegram" and (
+            role != "admin" or channel == "telegram" or not allow_telegram_report
+        ):
+            continue
+        available.append(tool)
+    return available
 
 
-async def run_tool(name: str, arguments_json: str, claims: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any] | None]:
+async def run_tool(
+    name: str,
+    arguments_json: str,
+    claims: dict[str, Any],
+    *,
+    allow_telegram_report: bool = False,
+) -> tuple[dict[str, Any], dict[str, Any] | None]:
     try:
         arguments = json.loads(arguments_json or "{}")
     except (ValueError, TypeError) as exc:
@@ -133,6 +171,13 @@ async def run_tool(name: str, arguments_json: str, claims: dict[str, Any]) -> tu
         if camera is None:
             raise ValueError("Cámara fuera del catálogo permitido")
         return await verify_camera_feed(request.camera_id), None
+    if name == "send_report_to_telegram":
+        if claims.get("role") != "admin" or claims.get("channel") == "telegram" or not allow_telegram_report:
+            raise PermissionError("Enviar informes a Telegram requiere una solicitud explícita desde el dashboard con perfil Administrador")
+        request = TelegramReportArguments.model_validate(arguments)
+        from backend.agents.argus.agent import send_on_demand_report
+
+        return await send_on_demand_report(request.days, claims), None
     if name == "generate_temporary_pin":
         if claims.get("channel") == "telegram":
             raise PermissionError("La creación de PINes no está disponible desde Telegram")

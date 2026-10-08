@@ -146,6 +146,9 @@ El servidor FastAPI también incluye:
 - `/ws/dashboard` para retransmitir eventos a clientes autenticados y medir RTT
   con ping/pong de aplicación.
 - `POST /api/v1/chat`, asistente Argus con herramientas limitadas y OpenRouter.
+- Desde el chat del dashboard, el perfil Administrador puede pedir explícitamente
+  `envía el informe general por Telegram`. Argus envía los agregados solo al chat
+  privado vinculado a esa cuenta AEGIS, sin aceptar un destino elegido por el modelo.
 - `POST /api/v1/telegram/webhook`, Hermes para usuarios autorizados. Resuelve consultas
   de Argus sin historial conversacional ni acciones de escritura desde Telegram.
 - Lockdown y evacuación generan avisos al registrarse en auditoría; los accesos
