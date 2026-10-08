@@ -1,4 +1,4 @@
-import { getVoltageReading } from "../../voltage-reading.js";
+import { getVoltageReading, VOLTAGE_NORMAL_MAX_V, VOLTAGE_NORMAL_MIN_V } from "../../voltage-reading.js";
 
 const PRIORITY_RANK = { system: 0, success: 1, warning: 2, critical: 3 };
 
@@ -68,7 +68,8 @@ export function formatActivity(data, { priority, timestamp, alerts: suppliedAler
     inferredPriority = temperature > 38 ? "critical" : "system";
   } else if (["voltaje", "voltage"].includes(type) || event.voltage_v != null) {
     const voltage = getVoltageReading(event);
-    const fluctuating = alerts.some((alert) => alert.code === "VOLTAGE_FLUCTUATION");
+    const fluctuating = alerts.some((alert) => alert.code === "VOLTAGE_FLUCTUATION")
+      || (voltage != null && voltage !== 0 && (voltage < VOLTAGE_NORMAL_MIN_V || voltage > VOLTAGE_NORMAL_MAX_V));
     title = voltage == null ? "Voltaje sin lectura" : voltage === 0 ? "Corte de energía" : fluctuating ? "Fluctuación de voltaje" : "Voltaje actualizado";
     const reading = voltage == null ? "No se recibió valor numérico" : `${voltage.toLocaleString("es", { maximumFractionDigits: 1 })} V`;
     detail = `${reading}${location ? ` · ${location}` : ""}`;

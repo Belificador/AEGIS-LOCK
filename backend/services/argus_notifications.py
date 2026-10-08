@@ -16,17 +16,21 @@ async def notify_security_alert(event: dict[str, Any], alerts: list[dict[str, An
     settings = get_settings()
     if not settings.telegram_bot_token:
         return
-    critical = [alert for alert in alerts if alert.get("severity") in {"critical", "lockdown"}]
-    if not critical:
+    incidents = [
+        alert for alert in alerts
+        if alert.get("severity") in {"critical", "lockdown"}
+        or alert.get("code") == "VOLTAGE_FLUCTUATION"
+    ]
+    if not incidents:
         return
 
     zone = str(event.get("zona") or event.get("zone") or "GLOBAL")[:120]
     source = str(event.get("source_id") or event.get("origen") or "aegis")[:80]
     timestamp = event.get("timestamp") or datetime.now().astimezone().isoformat()
     delivered = []
-    for alert in critical[:5]:
+    for alert in incidents[:5]:
         code = str(alert.get("code") or "CRITICAL")[:60]
-        if rate_limiter is not None:
+        if rate_limiter is not None and code != "VOLTAGE_FLUCTUATION":
             allowed = await rate_limiter.allow(
                 f"{source}:{zone}:{code}", "telegram-critical-alert", limit=1, window_seconds=300,
             )
@@ -37,7 +41,8 @@ async def notify_security_alert(event: dict[str, Any], alerts: list[dict[str, An
 
     if not delivered:
         return
-    text = f"AEGIS · ARGUS · ALERTA CRÍTICA\nHora: {timestamp}\n" + "\n".join(delivered)
+    heading = "ALERTA CRÍTICA" if any(alert.get("severity") in {"critical", "lockdown"} for alert in incidents) else "AVISO DE VOLTAJE"
+    text = f"AEGIS · HERMES · {heading}\nHora: {timestamp}\n" + "\n".join(delivered)
     await _send_to_recipients(text[:3900], action="critical_alert")
 
 

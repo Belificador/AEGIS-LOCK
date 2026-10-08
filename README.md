@@ -102,9 +102,7 @@ sin cuenta vinculada reciben el rol de solo lectura `operator`; las cuentas
 vinculadas deben existir y estar habilitadas en AEGIS. Cada usuario debe iniciar
 el bot con `/start`. El webhook secret
 debe ser aleatorio, de al menos 32 caracteres, y contener solo letras, números,
-guion o guion bajo. Los umbrales eléctricos se configuran con
-`VOLTAGE_NORMAL_MIN_V` (110 por defecto), `VOLTAGE_NORMAL_MAX_V` (220) y
-`VOLTAGE_FLUCTUATION_SAMPLES` (3 lecturas consecutivas). Usa contraseñas aleatorias, únicas por entorno y guardadas
+guion o guion bajo. Usa contraseñas aleatorias, únicas por entorno y guardadas
 solo como Render Secrets. `PIN_ENCRYPTION_KEY` debe ser independiente de
 `JWT_SECRET`; los PIN cifrados antes de esa clave nueva se descifran con el
 `JWT_SECRET` existente, así que no lo rotes hasta que esos PIN expiren o se
@@ -145,9 +143,9 @@ El servidor FastAPI también incluye:
 - `/ws/telemetry` para emisores autenticados por JWT o por la credencial privada
   servidor-a-servidor; normaliza y valida sobres del gemelo, evalúa umbrales de
   temperatura (>38 °C), pérdida efectiva (0 V), fluctuaciones fuera del rango
-  eléctrico configurado, intrusión y Lockdown, y persiste en PostgreSQL. Los
-  voltajes ausentes/nulos no se convierten en cero; las fluctuaciones requieren
-  la cantidad configurada de lecturas consecutivas.
+  normal de 110–220 V, intrusión y Lockdown, y persiste en PostgreSQL. Un valor
+  válido fuera del rango genera un aviso inmediato una vez al entrar en esa
+  condición; lecturas ausentes/nulas no se convierten en cero.
 - `/ws/dashboard` para retransmitir eventos a clientes autenticados y medir RTT
   con ping/pong de aplicación.
 - `POST /api/v1/chat`, asistente Argus con herramientas limitadas y OpenRouter.

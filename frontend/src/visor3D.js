@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { addCameraMarkers } from "./components/viewport/camera-markers.js";
-import { getVoltageReading } from "./voltage-reading.js";
+import { getVoltageReading, VOLTAGE_NORMAL_MAX_V, VOLTAGE_NORMAL_MIN_V } from "./voltage-reading.js";
 
 const MODEL_URL = new URL("../../models_3d/oficina/edificio.glb", import.meta.url).href;
 const MODEL_DISPLAY_SIZE = 16.5;
@@ -288,7 +288,8 @@ function getEventColor(event) {
   const voltage = getVoltageReading(event);
   const powerFailure = voltage === 0;
   const voltageFluctuation = Array.isArray(event.alerts)
-    && event.alerts.some((alert) => alert.code === "VOLTAGE_FLUCTUATION");
+    && event.alerts.some((alert) => alert.code === "VOLTAGE_FLUCTUATION")
+    || (voltage != null && voltage !== 0 && (voltage < VOLTAGE_NORMAL_MIN_V || voltage > VOLTAGE_NORMAL_MAX_V));
   if (denied || criticalTemperature || powerFailure) return { color: new THREE.Color("#ff3159"), intensity: 3.5 };
   if (voltageFluctuation) return { color: new THREE.Color("#ffad42"), intensity: 2.4 };
   if (type === "temperatura" || type === "voltaje" || event.temperature_c != null || event.voltage_v != null) {

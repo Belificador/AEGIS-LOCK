@@ -108,3 +108,41 @@ def test_access_without_entry_direction_does_not_claim_an_entry(monkeypatch) -> 
     asyncio.run(argus_notifications.notify_access_entry({"tipo_evento": "acceso_pin", "valor": "GRANTED", "metadata": {}}))
 
     assert delivered == []
+
+
+def test_voltage_fluctuation_is_sent_to_linked_hermes_users(monkeypatch) -> None:
+    delivered = []
+
+    async def active_user(username):
+        return {"username": username}
+
+    async def send_message(text, *, chat_id=None):
+        delivered.append((text, chat_id))
+
+    class RateLimiter:
+        async def allow(self, *_args, **_kwargs):
+            raise AssertionError("A voltage transition is already deduplicated by its sensor readings")
+
+    monkeypatch.setattr(
+        argus_notifications,
+        "get_settings",
+        lambda: SimpleNamespace(
+            telegram_bot_token="bot-token",
+            telegram_chat_id=None,
+            authorized_telegram_users={101: "operador"},
+        ),
+    )
+    monkeypatch.setattr(postgres_service, "pool", object())
+    monkeypatch.setattr(postgres_service, "get_user", active_user)
+    monkeypatch.setattr(argus_notifications, "send_telegram_message", send_message)
+
+    asyncio.run(argus_notifications.notify_security_alert(
+        {"voltage_v": 105, "zone": "Lobby", "timestamp": "2026-10-08T18:00:00+00:00"},
+        [{"severity": "warning", "code": "VOLTAGE_FLUCTUATION", "message": "Voltaje menor al rango normal"}],
+        RateLimiter(),
+    ))
+
+    assert len(delivered) == 1
+    assert delivered[0][1] == "101"
+    assert "AVISO DE VOLTAJE" in delivered[0][0]
+    assert "Voltaje menor al rango normal" in delivered[0][0]

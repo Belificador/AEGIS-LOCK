@@ -2,8 +2,10 @@
 
 from typing import Any
 
-from backend.config import get_settings
 from backend.models.schemas import TelemetryEvent
+
+VOLTAGE_NORMAL_MIN_V = 110
+VOLTAGE_NORMAL_MAX_V = 220
 
 
 def evaluate_event(event: TelemetryEvent) -> list[dict[str, Any]]:
@@ -25,17 +27,16 @@ async def evaluate_voltage_fluctuation(
     pool: Any,
     zone: str = "GLOBAL",
 ) -> dict[str, str] | None:
-    """Report a voltage excursion once it crosses the configured consecutive-sample threshold."""
+    """Report the transition into a real, explicit reading outside the normal voltage band."""
     voltage = event.voltage_v
-    settings = get_settings()
-    if voltage is None or voltage == 0 or settings.voltage_normal_min_v <= voltage <= settings.voltage_normal_max_v:
+    if voltage is None or voltage == 0 or VOLTAGE_NORMAL_MIN_V <= voltage <= VOLTAGE_NORMAL_MAX_V:
         return None
     if pool is None:
         return None
 
-    band = "low" if voltage < settings.voltage_normal_min_v else "high"
+    band = "low" if voltage < VOLTAGE_NORMAL_MIN_V else "high"
     zone = str(zone or "GLOBAL")
-    previous_samples = await pool.fetch(
+    previous = await pool.fetchrow(
         """
         SELECT (event->>'voltage_v')::double precision AS voltage_v
         FROM security_events
@@ -43,32 +44,27 @@ async def evaluate_voltage_fluctuation(
           AND coalesce(event->>'zona', event->>'zone', 'GLOBAL') = $2
           AND jsonb_typeof(event->'voltage_v') = 'number'
         ORDER BY received_at DESC
-        LIMIT $3
+        LIMIT 1
         """,
         event.source_id,
         zone,
-        settings.voltage_fluctuation_samples,
     )
-
-    consecutive = 1
-    for row in previous_samples:
-        previous = float(row["voltage_v"])
+    if previous is not None:
+        previous_voltage = float(previous["voltage_v"])
         previous_band = (
-            "low" if 0 < previous < settings.voltage_normal_min_v
-            else "high" if previous > settings.voltage_normal_max_v
+            "low" if 0 < previous_voltage < VOLTAGE_NORMAL_MIN_V
+            else "high" if previous_voltage > VOLTAGE_NORMAL_MAX_V
             else None
         )
-        if previous_band != band:
-            break
-        consecutive += 1
-    if consecutive < settings.voltage_fluctuation_samples:
-        return None
-
+        # Emit once on entry to an abnormal band; subsequent out-of-range samples
+        # continue to color the live camera amber without spamming notifications.
+        if previous_band == band:
+            return None
     return _alert(
         "warning",
         "VOLTAGE_FLUCTUATION",
         f"Fluctuación de voltaje: {voltage:.1f} V fuera del rango normal "
-        f"{settings.voltage_normal_min_v:g}–{settings.voltage_normal_max_v:g} V en {zone}",
+        f"{VOLTAGE_NORMAL_MIN_V}–{VOLTAGE_NORMAL_MAX_V} V en {zone}",
     )
 
 
