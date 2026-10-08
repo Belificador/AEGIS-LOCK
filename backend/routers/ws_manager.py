@@ -32,6 +32,7 @@ class ConnectionManager:
         self._pubsub: Any = None
         self._pubsub_task: asyncio.Task[None] | None = None
         self._persistence_task: asyncio.Task[None] | None = None
+        self._cache_tasks: set[asyncio.Task[None]] = set()
         self._rate_limiter: Any = None
         self._consumer = f"api-{id(self):x}"
         self._channel = "aegis:telemetry:live:v1"
@@ -67,6 +68,9 @@ class ConnectionManager:
                 task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
                     await task
+        if self._cache_tasks:
+            await asyncio.gather(*tuple(self._cache_tasks), return_exceptions=True)
+            self._cache_tasks.clear()
         if self._pubsub is not None:
             await self._pubsub.aclose()
             self._pubsub = None
@@ -203,10 +207,9 @@ class ConnectionManager:
 
     async def broadcast(self, message: dict[str, Any]) -> None:
         if self._redis is not None:
-            try:
-                await self.cache_latest_event(message)
-            except Exception:
-                logger.exception("telemetry_latest_cache_write_failed")
+            cache_task = asyncio.create_task(self.cache_latest_event(message), name="telemetry-latest-cache")
+            self._cache_tasks.add(cache_task)
+            cache_task.add_done_callback(self._finish_cache_task)
             try:
                 subscribers = await self._redis.publish(self._channel, json.dumps(message, separators=(",", ":"), default=str))
                 if subscribers:
@@ -214,6 +217,14 @@ class ConnectionManager:
             except Exception:
                 logger.exception("telemetry_pubsub_publish_failed; using local websocket broadcast")
         await self._broadcast_local(message)
+
+    def _finish_cache_task(self, task: asyncio.Task[None]) -> None:
+        self._cache_tasks.discard(task)
+        if task.cancelled():
+            return
+        error = task.exception()
+        if error is not None:
+            logger.warning("telemetry_latest_cache_write_failed error=%s", type(error).__name__)
 
     async def cache_latest_event(self, message: dict[str, Any]) -> None:
         if self._redis is None:

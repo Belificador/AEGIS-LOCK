@@ -68,6 +68,11 @@ VITE_AUTH_API_URL=https://aegis-lock-api.onrender.com/api/login
 VITE_WS_URL=wss://aegis-lock-api.onrender.com/ws/dashboard
 ```
 
+`VITE_WS_URL` es el receptor del dashboard y debe terminar en `/ws/dashboard`.
+No lo apuntes a `/ws/telemetry`: esa ruta recibe publicaciones de emisores. El
+emisor del gemelo se conecta por separado a `/ws/telemetry` con la credencial de
+servicio indicada más abajo.
+
 La ruta `/api/login` es alias de `/api/v1/auth/login`. El backend toma el rol de
 PostgreSQL; el JWT se envía en el primer frame WebSocket, nunca en la URL. Para
 apuntar al backend local, sobrescribe `VITE_WS_URL`:

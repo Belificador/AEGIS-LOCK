@@ -40,6 +40,8 @@ def test_manager_publishes_live_payload_and_caches_without_signed_feed_url() -> 
 
         await manager.broadcast(payload)
         queued = await manager.enqueue_persistence({"event_id": "event-1"}, [])
+        if manager._cache_tasks:
+            await asyncio.gather(*tuple(manager._cache_tasks))
         cached = await manager.latest_cached_event()
         await manager.close()
         return redis, cached, queued

@@ -1,6 +1,7 @@
 import { parseVoltageReading } from "./voltage-reading.js";
+import { resolveDashboardWebSocketUrl } from "./dashboard-websocket-url.js";
 
-const WS_URL = import.meta.env.VITE_WS_URL || "wss://aegis-lock-api.onrender.com/ws/dashboard";
+const WS_URL = import.meta.env.VITE_WS_URL;
 const RECONNECT_DELAY_MS = 5000;
 
 export class DataReceiver {
@@ -15,7 +16,7 @@ export class DataReceiver {
     this.pingSequence = 0;
     this.stopped = true;
     this.session = null;
-    this.url = url || WS_URL;
+    this.url = resolveDashboardWebSocketUrl(url || WS_URL, import.meta.env.VITE_AUTH_API_URL);
   }
 
   start(session) {
