@@ -4,7 +4,7 @@ import json
 import pytest
 
 from backend.agents.argus import agent
-from backend.agents.argus.tools import tools_for_role
+from backend.agents.argus.tools import run_tool, tools_for_role
 from backend.services.argus_reporting import _activity_label, _safe_zone
 
 
@@ -63,6 +63,32 @@ def test_non_admin_toolset_does_not_include_pin_generation() -> None:
         tool["function"]["name"] == "generate_temporary_pin"
         for tool in tools_for_role("admin")
     )
+
+
+def test_telegram_admin_still_gets_read_only_toolset(monkeypatch) -> None:
+    requested_tools = []
+
+    async def create_completion(_messages, *, tools=None):
+        requested_tools.extend(tools or [])
+        return {"content": "Consulté el estado de AEGIS."}
+
+    monkeypatch.setattr(agent, "create_completion", create_completion)
+    answer = asyncio.run(agent.ask_argus(
+        "temperatura",
+        {"role": "admin", "sub": "admin", "channel": "telegram"},
+    ))
+
+    assert answer == "Consulté el estado de AEGIS."
+    assert all(tool["function"]["name"] != "generate_temporary_pin" for tool in requested_tools)
+
+
+def test_telegram_admin_cannot_call_pin_tool_even_if_requested_directly() -> None:
+    with pytest.raises(PermissionError, match="no está disponible desde Telegram"):
+        asyncio.run(run_tool(
+            "generate_temporary_pin",
+            '{"door_name":"Puerta Lobby","target_user":"visitante","duration_hours":1}',
+            {"role": "admin", "sub": "admin", "channel": "telegram"},
+        ))
 
 
 def test_activity_summaries_do_not_echo_untrusted_zones_or_event_names() -> None:

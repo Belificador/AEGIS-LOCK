@@ -13,7 +13,11 @@ from pydantic import ValidationError
 from backend.config import get_settings
 from backend.core.log_safety import redact_sensitive_text
 from backend.routers.ws_manager import authenticate_websocket, manager
-from backend.services.argus_notifications import notify_security_alert
+from backend.services.argus_notifications import (
+    notify_access_entry,
+    notify_evacuation_occupancy,
+    notify_security_alert,
+)
 from backend.services.postgres_client import postgres_service
 from backend.services.rules_engine import evaluate_event
 from backend.services.telemetry_ingest import parse_telemetry
@@ -163,6 +167,12 @@ async def telemetry_socket(websocket: WebSocket) -> None:
                             "access_direction": event_data.get("metadata", {}).get("access_direction"),
                         },
                     )
+                    if access_value == "GRANTED" and event_data.get("metadata", {}).get("access_direction") == "entry":
+                        notification = asyncio.create_task(
+                            notify_access_entry(event_data),
+                            name="argus-telegram-authorized-entry",
+                        )
+                        notification.add_done_callback(_log_notification_failure)
             payload = {"kind": "telemetry", "event": event_data, "alerts": alerts}
             websocket.app.state.latest_event = payload
             persisted = False
@@ -171,6 +181,12 @@ async def telemetry_socket(websocket: WebSocket) -> None:
                 persisted = postgres_service.pool is not None
                 if persisted_event_data.get("energy_kwh") is not None:
                     event_data["energy_kwh"] = persisted_event_data["energy_kwh"]
+                if persisted and event.occupancy is not None:
+                    notification = asyncio.create_task(
+                        notify_evacuation_occupancy(rate_limiter),
+                        name="argus-telegram-evacuation-count",
+                    )
+                    notification.add_done_callback(_log_notification_failure)
             except Exception:
                 logger.exception("No se pudo persistir evento de telemetría")
 

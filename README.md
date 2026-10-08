@@ -95,8 +95,12 @@ En el **Backend API de Render** configura `ENVIRONMENT=production`, `DATABASE_UR
 `JWT_SECRET`, `PIN_ENCRYPTION_KEY`, `RATE_LIMIT_STORAGE_URI`, `TELEMETRY_API_KEY`,
 `GEMELO_MEDIA_BASE_URL`, `DEMO_OPERATOR_PASSWORD`, `DEMO_ADMIN_PASSWORD`,
 `OPENROUTER_API_KEY` y `ALLOWED_ORIGINS`. Si quieres recibir alertas críticas inmediatas,
-configura también `TELEGRAM_BOT_TOKEN` y `TELEGRAM_CHAT_ID` en el servicio API (además del Cron).
-Usa contraseñas aleatorias, únicas por entorno y guardadas
+configura también `TELEGRAM_BOT_TOKEN`, `TELEGRAM_USER_MAP` y
+`TELEGRAM_WEBHOOK_SECRET`. El mapa tiene el formato
+`telegram_user_id:aegis_username`, separado por comas, y solo acepta cuentas AEGIS
+habilitadas. Cada usuario debe iniciar el bot con `/start`. El webhook secret
+debe ser aleatorio, de al menos 32 caracteres, y contener solo letras, números,
+guion o guion bajo. Usa contraseñas aleatorias, únicas por entorno y guardadas
 solo como Render Secrets. `PIN_ENCRYPTION_KEY` debe ser independiente de
 `JWT_SECRET`; los PIN cifrados antes de esa clave nueva se descifran con el
 `JWT_SECRET` existente, así que no lo rotes hasta que esos PIN expiren o se
@@ -140,8 +144,13 @@ El servidor FastAPI también incluye:
 - `/ws/dashboard` para retransmitir eventos a clientes autenticados y medir RTT
   con ping/pong de aplicación.
 - `POST /api/v1/chat`, asistente Argus con herramientas limitadas y OpenRouter.
-- `python -m backend.jobs.daily_argus_report`, entry point para un Render Cron
-  Job que resume el día anterior y envía el reporte a Telegram.
+- `POST /api/v1/telegram/webhook`, Hermes para usuarios autorizados. Resuelve consultas
+  de Argus sin historial conversacional ni acciones de escritura desde Telegram.
+- Lockdown y evacuación generan avisos al registrarse en auditoría; los accesos
+  autorizados de entrada y los cambios de aforo durante evacuación también pueden
+  notificar a los IDs autorizados. Los conteos requieren telemetría reciente.
+- `python -m backend.jobs.daily_argus_report`, ejecutado por GitHub Actions para
+  resumir el día anterior y enviar el reporte a Telegram.
 
 ## Funciones del prototipo
 
@@ -191,26 +200,43 @@ npm test --prefix frontend
 npm run build --prefix frontend
 ```
 
-### Render Cron para el reporte diario de Argus
+### GitHub Actions para el reporte diario de Argus
 
-Crea un **Cron Job** adicional desde el mismo repositorio, en la región del
-PostgreSQL. Configura:
+Crea el workflow `.github/workflows/argus-daily-report.yml` en la rama principal.
+Incluye `schedule` y `workflow_dispatch` para que el reporte corra diariamente y
+pueda probarse manualmente. El horario configurado es 08:00 UTC.
 
-- **Build command:** `pip install -r requirements.txt`
-- **Start command:** `python -m backend.jobs.daily_argus_report`
-- **Schedule de ejemplo:** `0 8 * * *` (08:00 UTC; Render evalúa cron en UTC).
+GitHub Actions necesita estos Repository Secrets: `ARGUS_REPORT_DATABASE_URL`,
+`OPENROUTER_API_KEY`, `TELEGRAM_BOT_TOKEN` y `TELEGRAM_CHAT_ID`. Las claves
+configuradas en Render no se copian automáticamente a GitHub.
 
-El Cron no necesita `DATABASE_URL` con permisos de escritura. Crea un usuario
+El workflow no necesita `DATABASE_URL` con permisos de escritura. Crea un usuario
 PostgreSQL de solo lectura y dale `CONNECT` a la base, `USAGE` en el esquema y
 `SELECT` únicamente en `security_events`, `latest_telemetry` y `audit_logs`; guarda
-su conexión en `ARGUS_REPORT_DATABASE_URL`. En el Cron configura además
-`ENVIRONMENT=production`, `AEGIS_SERVICE_ROLE=argus_cron`, `OPENROUTER_API_KEY`,
-`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` y `ARGUS_REPORT_TIMEZONE` (por ejemplo,
-`America/Mexico_City`). Estas variables deben ir directamente en Render, no en
-`VITE_*`.
+su conexión externa en `ARGUS_REPORT_DATABASE_URL`. El workflow define
+`ENVIRONMENT=production`, `AEGIS_SERVICE_ROLE=argus_cron`,
+`OPENROUTER_APP_NAME=AEGIS LOCK - ARGUS` y `ARGUS_REPORT_TIMEZONE=UTC`.
+No guardes estas claves en el YAML ni en variables `VITE_*`.
 
 El reporte calcula los indicadores en PostgreSQL y envía a OpenRouter solo
-agregados; no manda PINes ni nombres. El gemelo debe incluir `metadata.pin_id` y
+agregados; no manda PINes ni nombres. Para que entradas y salidas se distingan,
+el gemelo debe incluir `metadata.pin_id` y
 `metadata.access_direction` (`entry` o `exit`) en los eventos de acceso para
 contar entradas y salidas confirmadas. Sin esos campos, Argus informa los accesos
 autorizados pero marca su dirección como desconocida.
+
+Para registrar el webhook después de desplegar la API, invoca `setWebhook` desde un
+terminal privado, usando el token y secreto configurados en Render:
+
+```bash
+curl -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
+  -H "Content-Type: application/json" \
+  -d "{\"url\":\"https://aegis-lock-api.onrender.com/api/v1/telegram/webhook\",\"secret_token\":\"${TELEGRAM_WEBHOOK_SECRET}\",\"allowed_updates\":[\"message\"]}"
+```
+
+No guardes el comando con valores reales en Git. El endpoint verifica el header
+`X-Telegram-Bot-Api-Secret-Token`, limita Hermes a mensajes privados vinculados
+con cuentas AEGIS habilitadas y procesa cada `update_id` una sola vez. Telegram
+usa herramientas de solo lectura durante esta primera versión. `TELEGRAM_CHAT_ID` en GitHub
+Actions sigue siendo el único destino del reporte diario; los mensajes del webhook
+responden al chat que originó la consulta.

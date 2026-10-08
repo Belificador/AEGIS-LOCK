@@ -5,11 +5,12 @@ import httpx
 from backend.config import get_settings
 
 
-async def send_telegram_message(text: str) -> None:
+async def send_telegram_message(text: str, *, chat_id: str | int | None = None) -> None:
     settings = get_settings()
     bot_token = (settings.telegram_bot_token or "").strip()
-    chat_id = (settings.telegram_chat_id or "").strip()
-    if not bot_token or not chat_id:
+    recipient_value = settings.telegram_chat_id if chat_id is None else chat_id
+    recipient = str(recipient_value or "").strip()
+    if not bot_token or not recipient:
         raise RuntimeError("Faltan TELEGRAM_BOT_TOKEN o TELEGRAM_CHAT_ID")
     if not text or len(text) > 4000:
         raise ValueError("El mensaje de Argus debe contener entre 1 y 4000 caracteres")
@@ -18,7 +19,7 @@ async def send_telegram_message(text: str) -> None:
         async with httpx.AsyncClient(timeout=httpx.Timeout(15, connect=4)) as client:
             response = await client.post(
                 f"https://api.telegram.org/bot{bot_token}/sendMessage",
-                json={"chat_id": chat_id, "text": text},
+                json={"chat_id": recipient, "text": text},
             )
     except httpx.HTTPError:
         # The bot token is embedded in the Telegram URL; never log or rethrow it.
@@ -29,7 +30,7 @@ async def send_telegram_message(text: str) -> None:
     except ValueError:
         result = None
     if not response.is_success or not isinstance(result, dict) or result.get("ok") is not True:
-        raise RuntimeError(_telegram_rejection_reason(response, result, bot_token, chat_id)) from None
+        raise RuntimeError(_telegram_rejection_reason(response, result, bot_token, recipient)) from None
 
 
 def _telegram_rejection_reason(

@@ -2,12 +2,13 @@
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from slowapi import Limiter
 
 from backend.core.dependencies import require_operator
 from backend.core.rate_limit import limiter
 from backend.models.schemas import AuditActionRequest
+from backend.services.argus_notifications import notify_mode_transition
 from backend.services.postgres_client import postgres_service
 
 router = APIRouter(prefix="/audit", tags=["audit"])
@@ -19,6 +20,7 @@ _FORBIDDEN_DETAIL_KEYS = {"pin", "pin_code", "password", "token", "secret", "ent
 async def record_action(
     payload: AuditActionRequest,
     request: Request,
+    background_tasks: BackgroundTasks,
     claims: Annotated[dict[str, Any], Depends(require_operator)],
 ) -> dict[str, Any]:
     if len(payload.details) > 12:
@@ -30,4 +32,16 @@ async def record_action(
         performed_by=str(claims["sub"]),
         details=payload.details,
     )
+    if row_id is not None and payload.action.value in {
+        "LOCKDOWN_ACTIVATED", "LOCKDOWN_RELEASED",
+        "EVACUATION_ACTIVATED", "EVACUATION_RELEASED",
+    }:
+        background_tasks.add_task(
+            notify_mode_transition,
+            payload.action.value,
+            actor=str(claims.get("username") or claims["sub"]),
+            source=str(payload.details.get("source") or "AEGIS"),
+            event_id=row_id,
+            rate_limiter=getattr(request.app.state, "websocket_rate_limiter", None),
+        )
     return {"ok": True, "id": row_id}

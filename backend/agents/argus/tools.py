@@ -7,6 +7,7 @@ from pydantic import Field
 from backend.agents.argus.reporting import get_activity_summary, get_current_status
 from backend.models.schemas import PinGenerateRequest, StrictModel
 from backend.services.argus_reporting import get_recent_activity
+from backend.services.argus_reporting import get_current_occupancy
 from backend.services.camera_catalog import CAMERA_BY_ID
 from backend.services.temporary_pins import generate_temporary_pin
 from backend.services.camera_checks import verify_camera_feed
@@ -30,6 +31,14 @@ TOOLS = [
         "function": {
             "name": "get_building_status",
             "description": "Consulta un resumen reciente del estado del edificio.",
+            "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_current_occupancy",
+            "description": "Consulta el aforo por zona con lecturas recientes. Si el aforo está desactualizado, indica que no puede confirmarse el total.",
             "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
         },
     },
@@ -108,6 +117,10 @@ async def run_tool(name: str, arguments_json: str, claims: dict[str, Any]) -> tu
         if arguments:
             raise ValueError("Esta herramienta no acepta argumentos")
         return await get_current_status(), None
+    if name == "get_current_occupancy":
+        if arguments:
+            raise ValueError("Esta herramienta no acepta argumentos")
+        return await get_current_occupancy(), None
     if name == "get_recent_activity":
         request = ActivityArguments.model_validate(arguments)
         return {"activities": await get_recent_activity(request.limit)}, None
@@ -121,6 +134,8 @@ async def run_tool(name: str, arguments_json: str, claims: dict[str, Any]) -> tu
             raise ValueError("Cámara fuera del catálogo permitido")
         return await verify_camera_feed(request.camera_id), None
     if name == "generate_temporary_pin":
+        if claims.get("channel") == "telegram":
+            raise PermissionError("La creación de PINes no está disponible desde Telegram")
         if claims.get("role") != "admin":
             raise PermissionError("La creación de PINes requiere perfil Administrador")
         request = PinGenerateRequest.model_validate(arguments)

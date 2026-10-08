@@ -17,6 +17,73 @@ _KNOWN_ZONES = {
 }
 
 
+async def get_current_building_mode(*, pool: Any = None) -> dict[str, Any]:
+    database = pool if pool is not None else postgres_service.pool
+    if database is None:
+        raise RuntimeError("PostgreSQL no está disponible para Argus")
+    row = await database.fetchrow(
+        """
+        SELECT id, action, timestamp, performed_by
+        FROM audit_logs
+        WHERE action IN (
+            'LOCKDOWN_ACTIVATED', 'LOCKDOWN_RELEASED',
+            'EVACUATION_ACTIVATED', 'EVACUATION_RELEASED'
+        )
+        ORDER BY id DESC
+        LIMIT 1
+        """
+    )
+    if row is None:
+        return {"mode": "NORMAL", "event_id": None, "updated_at": None, "actor": None}
+    mode_by_action = {
+        "LOCKDOWN_ACTIVATED": "LOCKDOWN",
+        "EVACUATION_ACTIVATED": "EVACUACIÓN",
+        "LOCKDOWN_RELEASED": "NORMAL",
+        "EVACUATION_RELEASED": "NORMAL",
+    }
+    return {
+        "mode": mode_by_action.get(row["action"], "NORMAL"),
+        "event_id": int(row["id"]),
+        "updated_at": row["timestamp"].isoformat(),
+        "actor": row["performed_by"],
+    }
+
+
+async def get_current_occupancy(*, pool: Any = None, max_age_seconds: int = 300) -> dict[str, Any]:
+    database = pool if pool is not None else postgres_service.pool
+    if database is None:
+        raise RuntimeError("PostgreSQL no está disponible para Argus")
+    rows = await database.fetch(
+        """
+        SELECT DISTINCT ON (zone) zone, event->>'occupancy' AS occupancy, updated_at
+        FROM latest_telemetry
+        WHERE jsonb_typeof(event->'occupancy') = 'number'
+        ORDER BY zone, updated_at DESC
+        """
+    )
+    now = datetime.now(timezone.utc)
+    fresh_by_zone: dict[str, int] = {}
+    timestamps: list[datetime] = []
+    stale_zones: list[str] = []
+    for row in rows:
+        updated_at = row["updated_at"]
+        if (now - updated_at).total_seconds() > max_age_seconds:
+            stale_zones.append(_safe_zone(row["zone"]))
+            continue
+        zone = _safe_zone(row["zone"])
+        fresh_by_zone[zone] = fresh_by_zone.get(zone, 0) + int(row["occupancy"])
+        timestamps.append(updated_at)
+
+    is_stale = not rows or bool(stale_zones)
+    return {
+        "total": sum(fresh_by_zone.values()) if fresh_by_zone and not is_stale else None,
+        "by_zone": fresh_by_zone,
+        "updated_at": min(timestamps).isoformat() if timestamps else None,
+        "stale": is_stale,
+        "stale_zones": sorted(set(stale_zones)),
+    }
+
+
 async def summarize_last_days(days: int, *, pool: Any = None) -> dict[str, Any]:
     end = datetime.now(timezone.utc)
     start = end - timedelta(days=days)

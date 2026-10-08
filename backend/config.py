@@ -3,6 +3,7 @@
 from functools import lru_cache
 from ipaddress import ip_address
 import os
+import re
 import secrets
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from typing import Literal
@@ -45,9 +46,17 @@ class Settings(BaseSettings):
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     openrouter_model: str = "nvidia/nemotron-3-ultra-550b-a55b"
     openrouter_site_url: str | None = None
-    openrouter_app_name: str = "AEGIS LOCK · ARGUS"
+    openrouter_app_name: str = "AEGIS LOCK - ARGUS"
     telegram_bot_token: str | None = Field(default=None, repr=False)
     telegram_chat_id: str | None = Field(default=None, repr=False)
+    telegram_webhook_secret: str | None = Field(
+        default=None,
+        repr=False,
+        min_length=32,
+        max_length=256,
+        pattern=r"^[A-Za-z0-9_-]+$",
+    )
+    telegram_user_map: str = Field(default="", repr=False)
     argus_report_timezone: str = "UTC"
     max_request_bytes: int = Field(default=1_048_576, ge=1024)
     max_telemetry_event_bytes: int = Field(default=65_536, ge=1024, le=1_048_576)
@@ -108,6 +117,43 @@ class Settings(BaseSettings):
             raise ValueError("ARGUS_REPORT_TIMEZONE must be an IANA timezone name") from exc
         return value
 
+    @field_validator("telegram_user_map")
+    @classmethod
+    def validate_telegram_user_map(cls, value: str) -> str:
+        pairs = [part.strip() for part in value.split(",") if part.strip()]
+        if len(pairs) > 100:
+            raise ValueError("TELEGRAM_USER_MAP cannot contain more than 100 accounts")
+        normalized_pairs: list[str] = []
+        telegram_ids: set[int] = set()
+        usernames: set[str] = set()
+        for pair in pairs:
+            telegram_id, separator, username = pair.partition(":")
+            telegram_id = telegram_id.strip()
+            username = username.strip().lower()
+            if not separator or not telegram_id.isdecimal() or int(telegram_id) <= 0:
+                raise ValueError("TELEGRAM_USER_MAP entries must use telegram_id:aegis_username")
+            if not re.fullmatch(r"[a-z0-9_.@:+-]{3,80}", username):
+                raise ValueError("TELEGRAM_USER_MAP contains an invalid AEGIS username")
+            if int(telegram_id) in telegram_ids or username in usernames:
+                raise ValueError("TELEGRAM_USER_MAP cannot duplicate Telegram IDs or AEGIS accounts")
+            telegram_ids.add(int(telegram_id))
+            usernames.add(username)
+            normalized_pairs.append(f"{int(telegram_id)}:{username}")
+        return ",".join(normalized_pairs)
+
+    @property
+    def authorized_telegram_users(self) -> dict[int, str]:
+        users: dict[int, str] = {}
+        for pair in self.telegram_user_map.split(","):
+            if pair:
+                telegram_id, username = pair.split(":", 1)
+                users[int(telegram_id)] = username
+        return users
+
+    @property
+    def authorized_telegram_user_ids(self) -> frozenset[int]:
+        return frozenset(self.authorized_telegram_users)
+
     @model_validator(mode="after")
     def validate_secrets(self) -> "Settings":
         if self.environment.lower() == "production":
@@ -130,6 +176,11 @@ class Settings(BaseSettings):
                     raise ValueError("RATE_LIMIT_STORAGE_URI must point to Render Key Value in production")
                 if urlsplit(self.rate_limit_storage_uri).scheme not in {"redis", "rediss"}:
                     raise ValueError("Production rate limits require a redis:// or rediss:// storage URI")
+                if self.telegram_user_map:
+                    if not self.telegram_bot_token:
+                        raise ValueError("TELEGRAM_BOT_TOKEN is required when Telegram users are authorized")
+                    if not self.telegram_webhook_secret:
+                        raise ValueError("TELEGRAM_WEBHOOK_SECRET is required when Telegram users are authorized")
                 self._validate_production_origins()
             else:
                 if not self.argus_report_database_url:

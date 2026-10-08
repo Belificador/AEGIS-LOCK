@@ -15,7 +15,7 @@ from starlette.responses import JSONResponse, Response
 from backend.config import get_settings
 from backend.core.middleware import SecurityHeadersAndSizeLimitMiddleware
 from backend.core.rate_limit import WebSocketRateLimiter, limiter
-from backend.routers import ai_chat, analytics, audit, auth, cameras, internal, pins, telemetry, ws_manager
+from backend.routers import ai_chat, analytics, audit, auth, cameras, internal, pins, telemetry, telegram, ws_manager
 from backend.services.postgres_client import postgres_service
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -96,6 +96,7 @@ app.include_router(analytics.router, prefix=settings.api_v1_prefix)
 app.include_router(audit.router, prefix=settings.api_v1_prefix)
 app.include_router(cameras.router, prefix=settings.api_v1_prefix)
 app.include_router(internal.router, prefix=settings.api_v1_prefix)
+app.include_router(telegram.router, prefix=settings.api_v1_prefix)
 app.include_router(ws_manager.router)
 app.include_router(telemetry.router)
 
