@@ -25,11 +25,12 @@ def test_only_explicit_zero_voltage_triggers_power_loss() -> None:
 
 def test_voltage_fluctuation_alerts_on_first_out_of_range_transition() -> None:
     class FakePool:
-        def __init__(self, previous):
+        def __init__(self, previous, alerts=None):
             self.previous = previous
+            self.alerts = alerts
 
         async def fetchrow(self, *_args):
-            return None if self.previous is None else {"voltage_v": self.previous}
+            return None if self.previous is None else {"voltage_v": self.previous, "alerts": self.alerts or []}
 
     event = TelemetryEvent(source_id="meter-01", event_type="voltage", voltage_v=105)
 
@@ -37,6 +38,13 @@ def test_voltage_fluctuation_alerts_on_first_out_of_range_transition() -> None:
         rules_engine.evaluate_voltage_fluctuation(event, pool=FakePool(220), zone="Lobby")
     )
     no_repeat_during_same_excursion = asyncio.run(
+        rules_engine.evaluate_voltage_fluctuation(
+            event,
+            pool=FakePool(108, [{"code": "VOLTAGE_FLUCTUATION"}]),
+            zone="Lobby",
+        )
+    )
+    first_new_sample_after_deploy = asyncio.run(
         rules_engine.evaluate_voltage_fluctuation(event, pool=FakePool(108), zone="Lobby")
     )
     alert_on_new_excursion = asyncio.run(
@@ -63,6 +71,7 @@ def test_voltage_fluctuation_alerts_on_first_out_of_range_transition() -> None:
         "message": "Fluctuación de voltaje: 105.0 V fuera del rango normal 110–220 V en Lobby",
     }
     assert no_repeat_during_same_excursion is None
+    assert first_new_sample_after_deploy is not None
     assert alert_on_new_excursion["code"] == "VOLTAGE_FLUCTUATION"
     assert upper_band_warning is not None and upper_band_warning["code"] == "VOLTAGE_FLUCTUATION"
     assert normal_boundary is None

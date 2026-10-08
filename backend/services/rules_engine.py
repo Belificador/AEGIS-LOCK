@@ -1,5 +1,6 @@
 """Deterministic safety rules for incoming building telemetry."""
 
+import json
 from typing import Any
 
 from backend.models.schemas import TelemetryEvent
@@ -38,7 +39,7 @@ async def evaluate_voltage_fluctuation(
     zone = str(zone or "GLOBAL")
     previous = await pool.fetchrow(
         """
-        SELECT (event->>'voltage_v')::double precision AS voltage_v
+        SELECT (event->>'voltage_v')::double precision AS voltage_v, alerts
         FROM security_events
         WHERE source_id = $1
           AND coalesce(event->>'zona', event->>'zone', 'GLOBAL') = $2
@@ -56,10 +57,21 @@ async def evaluate_voltage_fluctuation(
             else "high" if previous_voltage > VOLTAGE_NORMAL_MAX_V
             else None
         )
-        # Emit once on entry to an abnormal band; subsequent out-of-range samples
-        # continue to color the live camera amber without spamming notifications.
         if previous_band == band:
-            return None
+            previous_alerts = previous["alerts"]
+            if isinstance(previous_alerts, str):
+                try:
+                    previous_alerts = json.loads(previous_alerts)
+                except ValueError:
+                    previous_alerts = []
+            already_alerted = isinstance(previous_alerts, list) and any(
+                isinstance(alert, dict) and alert.get("code") == "VOLTAGE_FLUCTUATION"
+                for alert in previous_alerts
+            )
+            # Only suppress an ongoing excursion after a prior event actually
+            # carried the warning; this lets the first new sample alert after deploy.
+            if already_alerted:
+                return None
     return _alert(
         "warning",
         "VOLTAGE_FLUCTUATION",
