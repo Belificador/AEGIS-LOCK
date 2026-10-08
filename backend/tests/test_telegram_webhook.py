@@ -14,8 +14,8 @@ from backend.services.postgres_client import postgres_service
 
 
 def test_telegram_user_map_binds_numeric_ids_to_aegis_accounts() -> None:
-    settings = Settings(telegram_user_map="123456:operador, 789012:admin")
-    assert settings.authorized_telegram_users == {123456: "operador", 789012: "admin"}
+    settings = Settings(telegram_user_map="123456, 789012:admin")
+    assert settings.authorized_telegram_users == {123456: None, 789012: "admin"}
 
 
 def test_telegram_webhook_uses_allowlisted_read_only_argus_and_replies_to_sender(monkeypatch) -> None:
@@ -71,6 +71,55 @@ def test_telegram_webhook_uses_allowlisted_read_only_argus_and_replies_to_sender
         {"sub": "admin", "username": "admin", "role": "admin", "channel": "telegram"},
     )
     assert calls[1] == ("Temperatura: 22.0 °C", 123456789)
+
+
+def test_id_only_telegram_user_is_read_only_without_aegis_lookup(monkeypatch) -> None:
+    calls = []
+    settings = SimpleNamespace(
+        telegram_webhook_secret="s" * 40,
+        authorized_telegram_users={123456789: None},
+    )
+
+    class FakePool:
+        async def fetchval(self, _query, update_id):
+            return update_id
+
+        async def close(self):
+            return None
+
+    async def unexpected_user_lookup(_username):
+        raise AssertionError("ID-only entries should use the read-only Telegram operator role")
+
+    async def ask_argus(_message, claims):
+        calls.append(claims)
+        return "Aforo no disponible."
+
+    async def send_message(text, *, chat_id=None):
+        calls.append((text, chat_id))
+
+    monkeypatch.setattr(telegram_router, "get_settings", lambda: settings)
+    monkeypatch.setattr(postgres_service, "pool", FakePool())
+    monkeypatch.setattr(postgres_service, "get_user", unexpected_user_lookup)
+    monkeypatch.setattr(telegram_router, "ask_argus", ask_argus)
+    monkeypatch.setattr(telegram_router, "send_telegram_message", send_message)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/v1/telegram/webhook",
+            headers={"X-Telegram-Bot-Api-Secret-Token": "s" * 40},
+            json={
+                "update_id": 302,
+                "message": {
+                    "from": {"id": 123456789, "is_bot": False},
+                    "chat": {"id": 123456789, "type": "private"},
+                    "text": "/aforo",
+                },
+            },
+        )
+
+    assert response.status_code == 200
+    assert calls[0] == {"sub": "telegram:123456789", "username": "telegram:123456789", "role": "operator", "channel": "telegram"}
+    assert calls[1] == ("Aforo no disponible.", 123456789)
 
 
 def test_telegram_webhook_rejects_wrong_webhook_secret(monkeypatch) -> None:

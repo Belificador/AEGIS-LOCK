@@ -129,25 +129,28 @@ class Settings(BaseSettings):
         for pair in pairs:
             telegram_id, separator, username = pair.partition(":")
             telegram_id = telegram_id.strip()
-            username = username.strip().lower()
-            if not separator or not telegram_id.isdecimal() or int(telegram_id) <= 0:
-                raise ValueError("TELEGRAM_USER_MAP entries must use telegram_id:aegis_username")
-            if not re.fullmatch(r"[a-z0-9_.@:+-]{3,80}", username):
+            username = username.strip().lower() if separator else ""
+            if not telegram_id.isdecimal() or int(telegram_id) <= 0:
+                raise ValueError("TELEGRAM_USER_MAP entries must start with a positive numeric Telegram ID")
+            if username and not re.fullmatch(r"[a-z0-9_.@:+-]{3,80}", username):
                 raise ValueError("TELEGRAM_USER_MAP contains an invalid AEGIS username")
-            if int(telegram_id) in telegram_ids or username in usernames:
+            if int(telegram_id) in telegram_ids or (username and username in usernames):
                 raise ValueError("TELEGRAM_USER_MAP cannot duplicate Telegram IDs or AEGIS accounts")
             telegram_ids.add(int(telegram_id))
-            usernames.add(username)
-            normalized_pairs.append(f"{int(telegram_id)}:{username}")
+            if username:
+                usernames.add(username)
+                normalized_pairs.append(f"{int(telegram_id)}:{username}")
+            else:
+                normalized_pairs.append(str(int(telegram_id)))
         return ",".join(normalized_pairs)
 
     @property
-    def authorized_telegram_users(self) -> dict[int, str]:
-        users: dict[int, str] = {}
+    def authorized_telegram_users(self) -> dict[int, str | None]:
+        users: dict[int, str | None] = {}
         for pair in self.telegram_user_map.split(","):
             if pair:
-                telegram_id, username = pair.split(":", 1)
-                users[int(telegram_id)] = username
+                telegram_id, _, username = pair.partition(":")
+                users[int(telegram_id)] = username or None
         return users
 
     @property

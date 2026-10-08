@@ -84,19 +84,35 @@ async def receive_telegram_update(
             logger.warning("telegram_rate_limit_unavailable error=%s", type(exc).__name__)
             raise HTTPException(status_code=503, detail="Control de solicitudes no disponible") from exc
 
-    aegis_username = settings.authorized_telegram_users.get(sender_id)
-    if aegis_username is None:
+    authorized_users = settings.authorized_telegram_users
+    if sender_id not in authorized_users:
         await _reply(chat_id, "Cuenta de Telegram no autorizada para consultar AEGIS.")
         return {"ok": True}
-    try:
-        user = await postgres_service.get_user(aegis_username)
-    except Exception as exc:
-        logger.warning("telegram_account_lookup_failed error=%s", type(exc).__name__)
-        await _reply(chat_id, "No pude validar tu cuenta AEGIS en este momento.")
-        return {"ok": True}
-    if user is None:
-        await _reply(chat_id, "La cuenta AEGIS vinculada no está activa. Contacta a un administrador.")
-        return {"ok": True}
+    aegis_username = authorized_users[sender_id]
+    if aegis_username is None:
+        # An ID-only entry is authorized as a read-only Telegram operator.
+        claims: dict[str, Any] = {
+            "sub": f"telegram:{sender_id}",
+            "username": f"telegram:{sender_id}",
+            "role": "operator",
+            "channel": "telegram",
+        }
+    else:
+        try:
+            user = await postgres_service.get_user(aegis_username)
+        except Exception as exc:
+            logger.warning("telegram_account_lookup_failed error=%s", type(exc).__name__)
+            await _reply(chat_id, "No pude validar tu cuenta AEGIS en este momento.")
+            return {"ok": True}
+        if user is None:
+            await _reply(chat_id, "La cuenta AEGIS vinculada no está activa. Contacta a un administrador.")
+            return {"ok": True}
+        claims = {
+            "sub": user["username"],
+            "username": user["username"],
+            "role": user["role"],
+            "channel": "telegram",
+        }
 
     update_id = update.get("update_id")
     if isinstance(update_id, int) and not isinstance(update_id, bool):
@@ -136,12 +152,6 @@ async def receive_telegram_update(
 
     # The actual AEGIS role is loaded from PostgreSQL. The Telegram channel
     # independently suppresses write-capable tools in v1.
-    claims: dict[str, Any] = {
-        "sub": user["username"],
-        "username": user["username"],
-        "role": user["role"],
-        "channel": "telegram",
-    }
     try:
         answer = await ask_argus(prompt, claims)
     except OpenRouterError as exc:

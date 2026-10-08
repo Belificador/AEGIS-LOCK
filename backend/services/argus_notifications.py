@@ -146,7 +146,7 @@ async def _telegram_recipients(settings: Any) -> list[str]:
             return []
         active_ids = []
         for user_id, username in mapped_users.items():
-            if await postgres_service.get_user(username) is not None:
+            if username is None or await postgres_service.get_user(username) is not None:
                 active_ids.append(str(user_id))
         return sorted(active_ids)
     fallback = str(settings.telegram_chat_id or "").strip()

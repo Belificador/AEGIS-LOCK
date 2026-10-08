@@ -97,8 +97,10 @@ En el **Backend API de Render** configura `ENVIRONMENT=production`, `DATABASE_UR
 `OPENROUTER_API_KEY` y `ALLOWED_ORIGINS`. Si quieres recibir alertas críticas inmediatas,
 configura también `TELEGRAM_BOT_TOKEN`, `TELEGRAM_USER_MAP` y
 `TELEGRAM_WEBHOOK_SECRET`. El mapa tiene el formato
-`telegram_user_id:aegis_username`, separado por comas, y solo acepta cuentas AEGIS
-habilitadas. Cada usuario debe iniciar el bot con `/start`. El webhook secret
+`telegram_user_id` o `telegram_user_id:aegis_username`, separado por comas. Los IDs
+sin cuenta vinculada reciben el rol de solo lectura `operator`; las cuentas
+vinculadas deben existir y estar habilitadas en AEGIS. Cada usuario debe iniciar
+el bot con `/start`. El webhook secret
 debe ser aleatorio, de al menos 32 caracteres, y contener solo letras, números,
 guion o guion bajo. Usa contraseñas aleatorias, únicas por entorno y guardadas
 solo como Render Secrets. `PIN_ENCRYPTION_KEY` debe ser independiente de
