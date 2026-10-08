@@ -13,6 +13,7 @@ from pydantic import ValidationError
 from backend.config import get_settings
 from backend.core.log_safety import redact_sensitive_text
 from backend.routers.ws_manager import authenticate_websocket, manager
+from backend.services.argus_notifications import notify_security_alert
 from backend.services.postgres_client import postgres_service
 from backend.services.rules_engine import evaluate_event
 from backend.services.telemetry_ingest import parse_telemetry
@@ -98,6 +99,9 @@ async def telemetry_socket(websocket: WebSocket) -> None:
                     await websocket.send_json({"kind": "error", "detail": "El evento debe ser un objeto JSON"})
                     continue
                 event, event_data = parse_telemetry(raw_event)
+                metadata = event_data.get("metadata") if isinstance(event_data.get("metadata"), dict) else {}
+                access_target_user = metadata.pop("target_user", None)
+                event_data["metadata"] = metadata
                 persisted_event_data = copy.deepcopy(event_data)
             except asyncio.TimeoutError:
                 continue
@@ -139,6 +143,12 @@ async def telemetry_socket(websocket: WebSocket) -> None:
                 )
 
             alerts = evaluate_event(event)
+            if alerts:
+                notification = asyncio.create_task(
+                    notify_security_alert(event_data, alerts, rate_limiter),
+                    name="argus-telegram-alert",
+                )
+                notification.add_done_callback(_log_notification_failure)
             if event.event_type in {"acceso_pin", "access_pin"}:
                 access_value = str(raw_event.get("valor") or "").strip().upper()
                 if access_value in {"GRANTED", "DENIED", "LOCKOUT"}:
@@ -148,6 +158,9 @@ async def telemetry_socket(websocket: WebSocket) -> None:
                         details={
                             "door_name": raw_event.get("zona", raw_event.get("zone", "GLOBAL")),
                             "result": access_value,
+                            "pin_id": event_data.get("metadata", {}).get("pin_id"),
+                            "target_user": access_target_user,
+                            "access_direction": event_data.get("metadata", {}).get("access_direction"),
                         },
                     )
             payload = {"kind": "telemetry", "event": event_data, "alerts": alerts}
@@ -192,3 +205,11 @@ async def telemetry_socket(websocket: WebSocket) -> None:
             await websocket.close(code=1011)
         except Exception:
             pass
+
+
+def _log_notification_failure(task: asyncio.Task[None]) -> None:
+    if task.cancelled():
+        return
+    error = task.exception()
+    if error is not None:
+        logger.warning("argus_alert_task_failed error=%s", type(error).__name__)

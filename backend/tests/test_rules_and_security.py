@@ -37,7 +37,7 @@ def test_payload_rejects_unknown_fields_and_cors_rejects_wildcards() -> None:
     with pytest.raises(ValidationError):
         Settings(allowed_origins=["https://untrusted.example"])
     with pytest.raises(ValidationError):
-        Settings(local_ai_url="https://untrusted.example/v1")
+        Settings(openrouter_base_url="https://untrusted.example/api/v1")
     with pytest.raises(ValidationError):
         PinGenerateRequest(door_name="Puerta Lobby", duration_hours="8", target_user="visitante")
     with pytest.raises(ValidationError):

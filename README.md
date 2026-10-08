@@ -91,10 +91,12 @@ pip-audit -r requirements.txt
 uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000 --ws-max-size 1048576
 ```
 
-En Render configura `ENVIRONMENT=production`, `DATABASE_URL`, `JWT_SECRET`,
-`PIN_ENCRYPTION_KEY`, `RATE_LIMIT_STORAGE_URI`, `TELEMETRY_API_KEY`,
-`GEMELO_MEDIA_BASE_URL`, `DEMO_OPERATOR_PASSWORD`, `DEMO_ADMIN_PASSWORD` y
-`ALLOWED_ORIGINS`. Usa contraseñas aleatorias, únicas por entorno y guardadas
+En el **Backend API de Render** configura `ENVIRONMENT=production`, `DATABASE_URL`,
+`JWT_SECRET`, `PIN_ENCRYPTION_KEY`, `RATE_LIMIT_STORAGE_URI`, `TELEMETRY_API_KEY`,
+`GEMELO_MEDIA_BASE_URL`, `DEMO_OPERATOR_PASSWORD`, `DEMO_ADMIN_PASSWORD`,
+`OPENROUTER_API_KEY` y `ALLOWED_ORIGINS`. Si quieres recibir alertas críticas inmediatas,
+configura también `TELEGRAM_BOT_TOKEN` y `TELEGRAM_CHAT_ID` en el servicio API (además del Cron).
+Usa contraseñas aleatorias, únicas por entorno y guardadas
 solo como Render Secrets. `PIN_ENCRYPTION_KEY` debe ser independiente de
 `JWT_SECRET`; los PIN cifrados antes de esa clave nueva se descifran con el
 `JWT_SECRET` existente, así que no lo rotes hasta que esos PIN expiren o se
@@ -137,8 +139,9 @@ El servidor FastAPI también incluye:
   temperatura (>38 °C), 0 V, intrusión y Lockdown, y persiste en PostgreSQL.
 - `/ws/dashboard` para retransmitir eventos a clientes autenticados y medir RTT
   con ping/pong de aplicación.
-- `POST /api/v1/chat`, listo para un modelo local OpenAI-compatible al definir
-  `LOCAL_AI_URL` y `LOCAL_AI_MODEL`.
+- `POST /api/v1/chat`, asistente Argus con herramientas limitadas y OpenRouter.
+- `python -m backend.jobs.daily_argus_report`, entry point para un Render Cron
+  Job que resume el día anterior y envía el reporte a Telegram.
 
 ## Funciones del prototipo
 
@@ -154,8 +157,9 @@ El servidor FastAPI también incluye:
   PostgreSQL.
 - **Diagnóstico Admin:** incluye picos de temperatura y potencia/energía
   estimada, desconexiones/403 de la caja negra y gestión de PINes temporales.
-- **Chat:** no informa lecturas mientras el modelo está desconectado. No cambia
-  claves, puertas ni luces; la IA local aún no está conectada.
+- **Argus:** consulta actividad, estado, canales y PINes mediante herramientas
+  de backend limitadas por rol. No ejecuta comandos de shell ni controla
+  actuadores físicos; el modelo solo propone herramientas autorizadas.
 - **Lockdown, evacuación y cierre de jornada:** actualizan un estado simulado
   persistente en el navegador. El cierre puede programarse por hora y solo el
   perfil Administrador puede liberar el estado. No envía comandos físicos ni
@@ -186,3 +190,27 @@ npm audit --prefix frontend
 npm test --prefix frontend
 npm run build --prefix frontend
 ```
+
+### Render Cron para el reporte diario de Argus
+
+Crea un **Cron Job** adicional desde el mismo repositorio, en la región del
+PostgreSQL. Configura:
+
+- **Build command:** `pip install -r requirements.txt`
+- **Start command:** `python -m backend.jobs.daily_argus_report`
+- **Schedule de ejemplo:** `0 8 * * *` (08:00 UTC; Render evalúa cron en UTC).
+
+El Cron no necesita `DATABASE_URL` con permisos de escritura. Crea un usuario
+PostgreSQL de solo lectura y dale `CONNECT` a la base, `USAGE` en el esquema y
+`SELECT` únicamente en `security_events`, `latest_telemetry` y `audit_logs`; guarda
+su conexión en `ARGUS_REPORT_DATABASE_URL`. En el Cron configura además
+`ENVIRONMENT=production`, `AEGIS_SERVICE_ROLE=argus_cron`, `OPENROUTER_API_KEY`,
+`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` y `ARGUS_REPORT_TIMEZONE` (por ejemplo,
+`America/Mexico_City`). Estas variables deben ir directamente en Render, no en
+`VITE_*`.
+
+El reporte calcula los indicadores en PostgreSQL y envía a OpenRouter solo
+agregados; no manda PINes ni nombres. El gemelo debe incluir `metadata.pin_id` y
+`metadata.access_direction` (`entry` o `exit`) en los eventos de acceso para
+contar entradas y salidas confirmadas. Sin esos campos, Argus informa los accesos
+autorizados pero marca su dirección como desconocida.

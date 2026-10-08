@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 from enum import Enum
 import math
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, TypeAdapter, field_validator, model_validator
@@ -64,6 +64,9 @@ class TelemetryMetadata(StrictModel):
     location: SafeLabel | None = None
     ubicacion: SafeLabel | None = None
     door_name: SafeLabel | None = None
+    pin_id: UUID | None = None
+    target_user: SafeLabel | None = None
+    access_direction: Literal["entry", "exit"] | None = None
     node_name: SafeLabel | None = None
     node: SafeLabel | None = None
     nodo: SafeLabel | None = None
@@ -73,6 +76,14 @@ class TelemetryMetadata(StrictModel):
     room: SafeLabel | None = None
     habitacion: SafeLabel | None = None
     nodes: list[SafeLabel] | None = Field(default=None, max_length=32)
+
+    @field_validator("access_direction", mode="before")
+    @classmethod
+    def normalize_access_direction(cls, value: object) -> object:
+        if isinstance(value, str):
+            direction = value.strip().lower()
+            return {"entrada": "entry", "salida": "exit"}.get(direction, direction)
+        return value
 
 
 _VALUE_OBJECT_KEYS = {
