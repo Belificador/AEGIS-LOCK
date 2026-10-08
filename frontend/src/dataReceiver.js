@@ -1,3 +1,5 @@
+import { parseVoltageReading } from "./voltage-reading.js";
+
 const WS_URL = import.meta.env.VITE_WS_URL || "wss://aegis-lock-api.onrender.com/ws/dashboard";
 const RECONNECT_DELAY_MS = 5000;
 
@@ -162,7 +164,7 @@ export class DataReceiver {
 
 export function normalizeTelemetry(input = {}) {
   const event = { ...input };
-  const type = String(input.tipo_evento || "").trim().toLowerCase();
+  const type = String(input.tipo_evento || input.event_type || "").trim().toLowerCase();
   const value = input.valor && typeof input.valor === "object"
     ? input.valor.valor ?? input.valor.value ?? input.valor.lectura ?? input.valor.celsius ?? input.valor.temperature_c ?? input.valor.count ?? input.valor.personas ?? input.valor
     : input.valor;
@@ -172,9 +174,9 @@ export function normalizeTelemetry(input = {}) {
   if (type === "aforo" || type === "occupancy") event.occupancy = Number(value);
   if (type === "voltaje" || type === "voltage") {
     const objectValue = input.valor && typeof input.valor === "object" ? input.valor : {};
-    const voltage = objectValue.voltage_v ?? objectValue.voltage ?? objectValue.v ?? value;
+    const voltage = objectValue.voltage_v ?? objectValue.voltage ?? objectValue.v ?? input.voltage_v ?? value;
     const watts = objectValue.power_w ?? objectValue.watts ?? objectValue.w ?? metadata.power_w ?? metadata.watts;
-    event.voltage_v = Number(voltage);
+    event.voltage_v = parseVoltageReading(voltage);
     if (watts != null && Number.isFinite(Number(watts))) event.power_kw = Number(watts) / 1000;
     else if (objectValue.power_kw != null || metadata.power_kw != null) event.power_kw = Number(objectValue.power_kw ?? metadata.power_kw);
   }

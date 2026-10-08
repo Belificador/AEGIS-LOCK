@@ -6,6 +6,6 @@
 .signal-status b { overflow: hidden; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
 .signal-status .status-led { width: 6px; height: 6px; }
 .metrics-stack { display: flex; flex-direction: column; gap: 10px; }
-.sidebar-chat-root { display: flex; min-height: 190px; flex: 1 1 190px; }
-@media (max-width: 1200px) { .metrics-stack { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); }.metric-card-energy { grid-column: 1 / -1; }.sidebar-chat-root { min-height: 250px; flex: 1 1 250px; } }
-@media (max-width: 780px) { .metrics-stack { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); }.metric-card-energy { grid-column: 1 / -1; }.sidebar-chat-root { min-height: 230px; flex: initial; } }
+.sidebar-chat-root { display: flex; min-height: 320px; flex: 1 1 320px; }
+@media (max-width: 1200px) { .metrics-stack { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); }.metric-card-energy { grid-column: 1 / -1; }.sidebar-chat-root { min-height: 300px; flex: 1 1 300px; } }
+@media (max-width: 780px) { .metrics-stack { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); }.metric-card-energy { grid-column: 1 / -1; }.sidebar-chat-root { min-height: 280px; flex: initial; } }

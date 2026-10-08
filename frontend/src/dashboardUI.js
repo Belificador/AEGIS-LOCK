@@ -11,6 +11,7 @@ import { mountPanelExpansion } from "./components/panel-expansion.js";
 import { mountSidebarResize } from "./components/sidebar-resize.js";
 import { CAMERA_MARKERS } from "./components/viewport/camera-markers.js";
 import { patchState, state } from "./store.js";
+import { getVoltageReading } from "./voltage-reading.js";
 
 const AUTH_URL = import.meta.env.VITE_AUTH_API_URL || "https://aegis-lock-api.onrender.com/api/login";
 const API_ROOT = AUTH_URL.replace(/\/(?:api\/login|api\/v1\/auth\/login)\/?$/, "");
@@ -73,7 +74,6 @@ export function mountDashboard({ user, session, onLogout, wsUrl }) {
   const root = dashboard;
   const panelExpansion = mountPanelExpansion();
   const sidebarResize = mountSidebarResize(dashboard.querySelector(".dashboard-grid"));
-  const voltageReadings = new Map();
   const receiver = new DataReceiver({ url: wsUrl, onEvent: handleEvent, onLatency: (latency) => header.setLatency(latency), onStatus: (connection) => {
     const modelConnected = connection === "MODEL_CONNECTED";
     patchState({ connection, modelConnected });
@@ -192,16 +192,14 @@ export function mountDashboard({ user, session, onLogout, wsUrl }) {
     const event = payload.event;
     const alerts = Array.isArray(payload.alerts) ? payload.alerts : [];
     criticalAlerts.ingest({ event, alerts });
-    const voltageZone = event.zone || event.zona || "GLOBAL";
-    const priorVoltage = voltageReadings.get(voltageZone);
     sidebarLeft.update(event);
-    viewport.update(event);
+    viewport.update({ ...event, alerts });
     if (String(event.tipo_evento).toLowerCase() === "camera_selected" && event.origen !== "aegis-dashboard") right.updateCamera(event);
     patchState({ modelConnected: true, connection: "MODEL_CONNECTED", telemetry: { ...state.telemetry, ...event } });
     right.events.append(event, { alerts, timestamp: event.timestamp });
     for (const alert of alerts) {
       patchState({ recentAlerts: [...state.recentAlerts.slice(-9), alert.message] });
-      if (state.mode === "NORMAL") setMode("ALERTA", alert.code);
+      if (state.mode === "NORMAL" && ["critical", "lockdown"].includes(alert.severity)) setMode("ALERTA", alert.code);
     }
 
     const deniedPin = String(event.tipo_evento).toLowerCase() === "acceso_pin" && String(event.valor).toUpperCase() === "DENIED";
@@ -213,15 +211,7 @@ export function mountDashboard({ user, session, onLogout, wsUrl }) {
     } else if (event.intrusion && !alerts.length && state.mode === "NORMAL") {
       setMode("ALERTA", "INTRUSIÓN DETECTADA");
     }
-    const currentVoltage = Number(event.voltage_v);
-    if (event.voltage_v != null && Number.isFinite(currentVoltage)) voltageReadings.set(voltageZone, currentVoltage);
-    if (event.voltage_v != null && Number.isFinite(currentVoltage) && priorVoltage != null && currentVoltage > 0 && currentVoltage < Number(priorVoltage)) {
-      const drop = `CAÍDA DE VOLTAJE · ${priorVoltage} V → ${currentVoltage} V${event.zone || event.zona ? ` · ${event.zone || event.zona}` : ""}`;
-      right.events.alert(drop, "warning");
-      patchState({ recentAlerts: [...state.recentAlerts.slice(-9), drop] });
-      if (state.mode === "NORMAL") setMode("ALERTA", "CAÍDA DE VOLTAJE");
-    }
-    if (event.voltage_v != null && currentVoltage === 0) {
+    if (getVoltageReading(event) === 0) {
       patchState({ recentAlerts: [...state.recentAlerts.slice(-9), "Apagón eléctrico detectado"] });
       if (state.mode === "NORMAL") setMode("ALERTA", "APAGÓN ELÉCTRICO");
     }

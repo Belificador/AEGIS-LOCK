@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { addCameraMarkers } from "./components/viewport/camera-markers.js";
+import { getVoltageReading } from "./voltage-reading.js";
 
 const MODEL_URL = new URL("../../models_3d/oficina/edificio.glb", import.meta.url).href;
 const MODEL_DISPLAY_SIZE = 16.5;
@@ -284,8 +285,12 @@ function getEventColor(event) {
   const type = String(event.tipo_evento || "").toLowerCase();
   const denied = type === "acceso_pin" && String(event.valor).toUpperCase() === "DENIED";
   const criticalTemperature = (type === "temperatura" || event.temperature_c != null) && Number(event.temperature_c ?? event.valor) > 38;
-  const powerFailure = (type === "voltaje" || event.voltage_v != null) && Number(event.voltage_v ?? event.valor) === 0;
+  const voltage = getVoltageReading(event);
+  const powerFailure = voltage === 0;
+  const voltageFluctuation = Array.isArray(event.alerts)
+    && event.alerts.some((alert) => alert.code === "VOLTAGE_FLUCTUATION");
   if (denied || criticalTemperature || powerFailure) return { color: new THREE.Color("#ff3159"), intensity: 3.5 };
+  if (voltageFluctuation) return { color: new THREE.Color("#ffad42"), intensity: 2.4 };
   if (type === "temperatura" || type === "voltaje" || event.temperature_c != null || event.voltage_v != null) {
     return { color: new THREE.Color("#3bffad"), intensity: 1.65 };
   }

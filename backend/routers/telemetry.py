@@ -19,7 +19,7 @@ from backend.services.argus_notifications import (
     notify_security_alert,
 )
 from backend.services.postgres_client import postgres_service
-from backend.services.rules_engine import evaluate_event
+from backend.services.rules_engine import evaluate_event, evaluate_voltage_fluctuation
 from backend.services.telemetry_ingest import parse_telemetry
 from backend.services.camera_catalog import signed_camera_url
 
@@ -147,6 +147,17 @@ async def telemetry_socket(websocket: WebSocket) -> None:
                 )
 
             alerts = evaluate_event(event)
+            if event.voltage_v is not None and event.voltage_v != 0:
+                try:
+                    fluctuation = await evaluate_voltage_fluctuation(
+                        event,
+                        pool=postgres_service.pool,
+                        zone=str(event_data.get("zona") or event_data.get("zone") or "GLOBAL"),
+                    )
+                    if fluctuation:
+                        alerts.append(fluctuation)
+                except Exception as exc:
+                    logger.warning("voltage_quality_check_failed error=%s", type(exc).__name__)
             if alerts:
                 notification = asyncio.create_task(
                     notify_security_alert(event_data, alerts, rate_limiter),

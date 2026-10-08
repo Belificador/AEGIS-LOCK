@@ -1,17 +1,17 @@
-.chat-panel { display: flex; width: 100%; min-height: 0; flex-direction: column; padding: 15px; background: linear-gradient(145deg,rgba(16,26,44,.78),rgba(10,17,30,.78)); border: 1px solid var(--aegis-border); border-radius: var(--panel-radius); box-shadow: inset 0 1px rgba(255,255,255,.045),0 14px 38px rgba(0,0,0,.14); }
-.chat-panel-heading { display: flex; align-items: center; justify-content: space-between; padding-bottom: 11px; border-bottom: 1px solid var(--aegis-border); }
+.chat-panel { display: flex; width: 100%; min-height: 0; flex-direction: column; padding: 18px; background: linear-gradient(145deg,rgba(16,26,44,.84),rgba(10,17,30,.86)); border: 1px solid var(--aegis-border); border-radius: var(--panel-radius); box-shadow: inset 0 1px rgba(255,255,255,.045),0 14px 38px rgba(0,0,0,.14); }
+.chat-panel-heading { display: flex; align-items: center; justify-content: space-between; padding-bottom: 13px; border-bottom: 1px solid var(--aegis-border); }
 .chat-title-wrap { display: flex; align-items: center; gap: 9px; }
 .chat-ai-symbol { color: var(--aegis-accent); font-size: 19px; filter: drop-shadow(0 0 8px rgba(var(--aegis-accent-rgb),.4)); }
-.chat-panel-heading h2 { margin: 0; color: var(--aegis-text-main); font-size: 9px; font-weight: 800; letter-spacing: .8px; }
-.chat-panel-heading p { margin: 4px 0 0; color: var(--aegis-text-muted); font: 700 6px var(--font-mono); letter-spacing: .65px; }
+.chat-panel-heading h2 { margin: 0; color: var(--aegis-text-main); font-size: 12px; font-weight: 800; letter-spacing: .8px; }
+.chat-panel-heading p { margin: 4px 0 0; color: var(--aegis-text-muted); font: 700 8px var(--font-mono); letter-spacing: .65px; }
 .chat-thread { display: flex; min-height: 0; flex: 1; flex-direction: column; gap: 8px; padding: 10px 1px; overflow-y: auto; }
-.chat-message { max-width: 92%; padding: 9px 11px; color: var(--aegis-text-secondary); background: rgba(7,14,25,.74); border: 1px solid var(--aegis-border); border-radius: 9px; font-size: 9px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.chat-message { max-width: 94%; padding: 12px 14px; color: var(--aegis-text-secondary); background: rgba(7,14,25,.82); border: 1px solid var(--aegis-border); border-radius: 10px; font-size: 12px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
 .chat-message.is-user { align-self: flex-end; color: var(--aegis-text-main); background: rgba(var(--aegis-accent-rgb),.09); border-color: rgba(var(--aegis-accent-rgb),.2); }
 .chat-message.is-assistant { align-self: flex-start; }
-.chat-prompt { margin: auto; color: var(--aegis-text-muted); font-size: 9px; line-height: 1.7; text-align: center; }
+.chat-prompt { max-width: 34ch; margin: auto; color: var(--aegis-text-muted); font-size: 12px; line-height: 1.7; text-align: center; }
 .chat-form { display: flex; gap: 8px; }
-.chat-form input { width: 100%; min-width: 0; height: 38px; padding: 0 11px; color: var(--aegis-text-main); background: rgba(4,10,19,.62); border: 1px solid var(--aegis-border); border-radius: 8px; font-size: 9px; }
+.chat-form input { width: 100%; min-width: 0; height: 46px; padding: 0 14px; color: var(--aegis-text-main); background: rgba(4,10,19,.72); border: 1px solid var(--aegis-border); border-radius: 9px; font-size: 12px; }
 .chat-form input::placeholder { color: #697b95; }
-.chat-send { width: 39px; flex: 0 0 auto; color: #03111a; cursor: pointer; background: linear-gradient(140deg,#8af0ff,var(--aegis-accent)); border: 1px solid rgba(255,255,255,.22); border-radius: 8px; box-shadow: 0 5px 15px rgba(var(--aegis-accent-rgb),.2); font-size: 16px; transition: transform .16s ease,box-shadow .16s ease; }
+.chat-send { width: 44px; flex: 0 0 auto; color: #03111a; cursor: pointer; background: linear-gradient(140deg,#8af0ff,var(--aegis-accent)); border: 1px solid rgba(255,255,255,.22); border-radius: 9px; box-shadow: 0 5px 15px rgba(var(--aegis-accent-rgb),.2); font-size: 18px; transition: transform .16s ease,box-shadow .16s ease; }
 .chat-send:hover:not(:disabled) { box-shadow: 0 7px 20px rgba(var(--aegis-accent-rgb),.35); transform: translateY(-1px); }
 .chat-send:disabled { opacity: .5; cursor: wait; }

@@ -57,6 +57,9 @@ class Settings(BaseSettings):
         pattern=r"^[A-Za-z0-9_-]+$",
     )
     telegram_user_map: str = Field(default="", repr=False)
+    voltage_normal_min_v: float = Field(default=110, ge=0, le=1000)
+    voltage_normal_max_v: float = Field(default=220, ge=0, le=1000)
+    voltage_fluctuation_samples: int = Field(default=3, ge=2, le=10, strict=True)
     argus_report_timezone: str = "UTC"
     max_request_bytes: int = Field(default=1_048_576, ge=1024)
     max_telemetry_event_bytes: int = Field(default=65_536, ge=1024, le=1_048_576)
@@ -159,6 +162,8 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_secrets(self) -> "Settings":
+        if self.voltage_normal_min_v >= self.voltage_normal_max_v:
+            raise ValueError("VOLTAGE_NORMAL_MIN_V must be lower than VOLTAGE_NORMAL_MAX_V")
         if self.environment.lower() == "production":
             if urlsplit(self.gemelo_media_base_url).scheme != "https":
                 raise ValueError("GEMELO_MEDIA_BASE_URL must use HTTPS in production")

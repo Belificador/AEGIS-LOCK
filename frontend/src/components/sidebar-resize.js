@@ -1,7 +1,7 @@
-const STORAGE_KEY = "aegis.dashboard.sidebar-widths.v1";
-const LEFT_MIN = 250;
+const STORAGE_KEY = "aegis.dashboard.sidebar-widths.v2";
+const LEFT_MIN = 280;
 const RIGHT_MIN = 280;
-const LEFT_MAX = 520;
+const LEFT_MAX = 560;
 const RIGHT_MAX = 520;
 const CENTER_MIN = 380;
 const HANDLE_WIDTH = 8;
@@ -112,11 +112,11 @@ function readWidths() {
   try {
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
     return {
-      left: clamp(Number(stored?.left) || 320, LEFT_MIN, LEFT_MAX),
+      left: clamp(Number(stored?.left) || 380, LEFT_MIN, LEFT_MAX),
       right: clamp(Number(stored?.right) || 360, RIGHT_MIN, RIGHT_MAX),
     };
   } catch {
-    return { left: 320, right: 360 };
+    return { left: 380, right: 360 };
   }
 }
 

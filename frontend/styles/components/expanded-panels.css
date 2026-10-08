@@ -9,7 +9,7 @@
 .expanded-panel-content > #sidebar-chat-root,.expanded-panel-content > #security-controls-root { display: block; min-height: 0; overflow: visible; }
 .expanded-panel-content #event-console-root { display: flex; height: min(65dvh,720px); min-height: 260px; overflow: hidden; }
 .expanded-panel-content .events-panel { height: 100%; max-height: none; }
-.expanded-panel-content .chat-panel { min-height: min(65dvh,720px); }
+.expanded-panel-content .chat-panel { min-height: min(74dvh,820px); }
 .expanded-panel-content .selected-camera-player { min-height: clamp(280px,58dvh,720px); }
 .expanded-panel-content .security-panel { margin-bottom: 12px; }
 .expanded-panel-content #security-controls-root > section:last-child { margin-bottom: 0; }

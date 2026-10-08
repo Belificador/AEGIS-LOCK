@@ -1,3 +1,5 @@
+import { getVoltageReading } from "../../voltage-reading.js";
+
 const PRIORITY_RANK = { system: 0, success: 1, warning: 2, critical: 3 };
 
 export function formatActivity(data, { priority, timestamp, alerts: suppliedAlerts } = {}) {
@@ -65,10 +67,12 @@ export function formatActivity(data, { priority, timestamp, alerts: suppliedAler
     detail = `${Number.isFinite(temperature) ? `${temperature.toLocaleString("es", { maximumFractionDigits: 1 })} °C` : value}${location ? ` · ${location}` : ""}`;
     inferredPriority = temperature > 38 ? "critical" : "system";
   } else if (["voltaje", "voltage"].includes(type) || event.voltage_v != null) {
-    const voltage = Number(event.voltage_v ?? value);
-    title = voltage === 0 ? "Corte de energía" : "Voltaje actualizado";
-    detail = `${Number.isFinite(voltage) ? `${voltage.toLocaleString("es", { maximumFractionDigits: 1 })} V` : value}${location ? ` · ${location}` : ""}`;
-    inferredPriority = voltage === 0 ? "critical" : "system";
+    const voltage = getVoltageReading(event);
+    const fluctuating = alerts.some((alert) => alert.code === "VOLTAGE_FLUCTUATION");
+    title = voltage == null ? "Voltaje sin lectura" : voltage === 0 ? "Corte de energía" : fluctuating ? "Fluctuación de voltaje" : "Voltaje actualizado";
+    const reading = voltage == null ? "No se recibió valor numérico" : `${voltage.toLocaleString("es", { maximumFractionDigits: 1 })} V`;
+    detail = `${reading}${location ? ` · ${location}` : ""}`;
+    inferredPriority = voltage === 0 ? "critical" : fluctuating ? "warning" : "system";
   } else if (["aforo", "occupancy"].includes(type) || event.occupancy != null) {
     const occupancy = event.occupancy ?? value;
     title = "Aforo actualizado";

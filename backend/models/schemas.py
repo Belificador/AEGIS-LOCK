@@ -207,6 +207,12 @@ class TelemetryEvent(StrictModel):
     lockdown: bool = False
     message: TelemetryMessage | None = None
 
+    @model_validator(mode="after")
+    def require_voltage_value_for_voltage_event(self) -> "TelemetryEvent":
+        if self.event_type in {"voltaje", "voltage"} and self.voltage_v is None:
+            raise ValueError("Un evento de voltaje requiere una lectura numérica explícita")
+        return self
+
 
 class ChatRequest(StrictModel):
     message: SafeText
