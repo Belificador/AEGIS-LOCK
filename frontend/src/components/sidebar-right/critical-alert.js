@@ -1,5 +1,3 @@
-import { getVoltageReading, VOLTAGE_NORMAL_MAX_V, VOLTAGE_NORMAL_MIN_V } from "../../voltage-reading.js";
-
 const ACKED_KEY = "aegis.acknowledged-alerts.v1";
 let sharedAudioContext = null;
 
@@ -49,11 +47,9 @@ export function mountCriticalAlert({ onAcknowledge } = {}) {
     clearResolvedState(event);
     const type = String(event.tipo_evento || "").toLowerCase();
     const value = String(event.valor ?? "").toUpperCase();
-    const voltageReading = getVoltageReading(event);
     const deniedAccess = type === "acceso_pin" && ["DENIED", "LOCKOUT"].includes(value);
     const candidates = alerts
-      .filter((alert) => (alert.severity === "critical" || alert.severity === "lockdown")
-        && (alert.code !== "POWER_LOSS" || voltageReading === 0))
+      .filter((alert) => alert.severity === "critical" || alert.severity === "lockdown")
       .map((alert) => ({
         code: alert.code || "CRITICAL",
         message: alert.message || "Incidente crítico",
@@ -69,7 +65,7 @@ export function mountCriticalAlert({ onAcknowledge } = {}) {
     if (Number(event.temperature_c) > 38 && !candidates.some((candidate) => candidate.code === "HIGH_TEMPERATURE")) {
       candidates.push({ code: "HIGH_TEMPERATURE", message: `Temperatura crítica: ${event.temperature_c} °C` });
     }
-    if (voltageReading === 0 && !candidates.some((candidate) => candidate.code === "POWER_LOSS")) {
+    if (Number(event.voltage_v) === 0 && !candidates.some((candidate) => candidate.code === "POWER_LOSS")) {
       candidates.push({ code: "POWER_LOSS", message: "Se detectó una lectura de 0 V" });
     }
 
@@ -91,11 +87,8 @@ export function mountCriticalAlert({ onAcknowledge } = {}) {
     const zone = String(event.zone || event.zona || "GLOBAL");
     if ((event.tipo_evento === "temperatura" || event.temperature_c != null)
         && Number(event.temperature_c ?? event.valor) <= 38) acked.delete(`HIGH_TEMPERATURE:${source}:${zone}`);
-    const voltage = getVoltageReading(event);
-    if (voltage != null && voltage > 0) acked.delete(`POWER_LOSS:${source}:${zone}`);
-    if (voltage != null && voltage >= VOLTAGE_NORMAL_MIN_V && voltage <= VOLTAGE_NORMAL_MAX_V) {
-      acked.delete(`VOLTAGE_FLUCTUATION:${source}:${zone}`);
-    }
+    if ((event.tipo_evento === "voltaje" || event.voltage_v != null)
+        && Number(event.voltage_v ?? event.valor) > 0) acked.delete(`POWER_LOSS:${source}:${zone}`);
     if (["GRANTED", "NORMAL", "CLEAR"].includes(String(event.valor ?? "").toUpperCase())
         || event.intrusion === false) acked.delete(`INTRUSION:${source}:${zone}`);
     saveAcknowledged(acked);

@@ -14,13 +14,6 @@ class SecurityHeadersAndSizeLimitMiddleware:
             return
 
         headers = dict(scope.get("headers", []))
-        method = scope.get("method", "GET").upper()
-        path = scope.get("path", "")
-        if method in {"POST", "PUT", "PATCH"} and path.startswith("/api/"):
-            content_type = headers.get(b"content-type", b"").split(b";", 1)[0].strip().lower()
-            if content_type != b"application/json":
-                await self._reject(send, status=415, detail="Content-Type must be application/json")
-                return
         content_length = headers.get(b"content-length")
         if content_length:
             try:
@@ -70,12 +63,12 @@ class SecurityHeadersAndSizeLimitMiddleware:
         await self.app(scope, replay_receive, send_with_security_headers)
 
     @staticmethod
-    async def _reject(send: Send, *, status: int = 413, detail: str = "Request body too large") -> None:
-        body = ('{"detail":"' + detail + '"}').encode("utf-8")
+    async def _reject(send: Send) -> None:
+        body = b'{"detail":"Request body too large"}'
         await send(
             {
                 "type": "http.response.start",
-                "status": status,
+                "status": 413,
                 "headers": [
                     (b"content-type", b"application/json"),
                     (b"content-length", str(len(body)).encode()),

@@ -53,7 +53,7 @@ export function mountHeader(root, { user, onLogout, onOpenAdmin }) {
       const latency = Math.max(0, Math.round(Number(milliseconds)));
       indicator.textContent = `${latency} ms`;
       indicator.dataset.quality = latency <= 100 ? "good" : latency <= 250 ? "warning" : "critical";
-      indicator.title = `Tiempo de respuesta REST de telemetría: ${latency} ms`;
+      indicator.title = `Latencia WebSocket de ida y vuelta: ${latency} ms`;
     },
     destroy() { window.clearInterval(clockTimer); },
   };

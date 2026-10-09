@@ -2,38 +2,21 @@
 
 from datetime import datetime, timezone
 from enum import Enum
-import math
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, TypeAdapter, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
 
 SafeIdentifier = Annotated[
     str,
     StringConstraints(strip_whitespace=True, min_length=1, max_length=80, pattern=r"^[\w.:-]+$"),
 ]
-SafeLabel = Annotated[
-    str,
-    StringConstraints(strip_whitespace=True, min_length=1, max_length=120, pattern=r"^[^\x00-\x1f\x7f]+$"),
-]
-SafeText = Annotated[
-    str,
-    StringConstraints(strip_whitespace=True, min_length=1, max_length=1200, pattern=r"^[^\x00-\x08\x0b\x0c\x0e-\x1f\x7f]+$"),
-]
-SafeLogText = Annotated[
-    str,
-    StringConstraints(strip_whitespace=True, min_length=1, max_length=1200, pattern=r"^[^\x00-\x1f\x7f]+$"),
-]
-EventType = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=40, pattern=r"^[a-z][a-z0-9_.:-]*$")]
-TelemetryMessage = Annotated[
-    str,
-    StringConstraints(strip_whitespace=True, min_length=1, max_length=500, pattern=r"^[^\x00-\x1f\x7f]+$"),
-]
+SafeText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=1200)]
 
 
 class StrictModel(BaseModel):
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True, allow_inf_nan=False)
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
 
 class UserRole(str, Enum):
@@ -42,177 +25,12 @@ class UserRole(str, Enum):
     VIEWER = "viewer"
 
 
-class CameraMetadata(StrictModel):
-    id: SafeIdentifier | None = None
-    name: SafeLabel | None = None
-    location: SafeLabel | None = None
-
-
-class TelemetryMetadata(StrictModel):
-    sensor: SafeIdentifier | None = None
-    estado_actual: bool | None = None
-    zona_id: int | None = Field(default=None, ge=0, le=10_000, strict=True)
-    alcance: SafeIdentifier | None = None
-    estado: SafeIdentifier | None = None
-    escenario: SafeIdentifier | None = None
-    factor: float | None = Field(default=None, ge=0, le=1, strict=True)
-    factor_electrico: float | None = Field(default=None, ge=0, le=1, strict=True)
-    voltaje_v: float | None = Field(default=None, ge=0, le=1000, strict=True)
-    unidad: SafeLabel | None = None
-    banda: SafeIdentifier | None = None
-    hvac: SafeIdentifier | None = None
-    umbral: float | None = Field(default=None, ge=-50, le=150, strict=True)
-    desde_banda: int | None = Field(default=None, ge=-1, le=1, strict=True)
-    hacia_banda: int | None = Field(default=None, ge=-1, le=1, strict=True)
-    delta: int | None = Field(default=None, ge=-1_000_000, le=1_000_000, strict=True)
-    max: int | None = Field(default=None, ge=0, le=1_000_000, strict=True)
-    caminando: int | None = Field(default=None, ge=0, le=1_000_000, strict=True)
-    enviados: int | None = Field(default=None, ge=0, le=1_000_000, strict=True)
-    withdrawals: int | None = Field(default=None, ge=0, le=1_000_000, strict=True)
-    accion: SafeIdentifier | None = None
-    motivo: SafeIdentifier | None = None
-    intentos: int | None = Field(default=None, ge=0, le=1_000_000, strict=True)
-    intentos_restantes: int | None = Field(default=None, ge=0, le=1_000_000, strict=True)
-    segundos_bloqueo: int | None = Field(default=None, ge=0, le=86_400, strict=True)
-    tipo_codigo: SafeIdentifier | None = None
-    codigo_id: SafeIdentifier | None = None
-    snapshot_inicial: bool | None = None
-    ids: list[SafeIdentifier] | None = Field(default=None, max_length=40)
-    punto: list[float] | None = Field(default=None, min_length=3, max_length=3)
-    videoPath: SafeLabel | None = None
-    transmission: SafeIdentifier | None = None
-    power_w: float | None = Field(default=None, ge=0, le=100_000_000, strict=True)
-    watts: float | None = Field(default=None, ge=0, le=100_000_000, strict=True)
-    power_kw: float | None = Field(default=None, ge=0, le=100_000, strict=True)
-    energy_kwh: float | None = Field(default=None, ge=0, le=1_000_000_000, strict=True)
-    power_estimated: bool | None = None
-    direccion: int | None = Field(default=None, ge=-1, le=1, strict=True)
-    camera_id: SafeIdentifier | None = None
-    cameraId: SafeIdentifier | None = None
-    camera: CameraMetadata | None = None
-    name: SafeLabel | None = None
-    location: SafeLabel | None = None
-    ubicacion: SafeLabel | None = None
-    door_name: SafeLabel | None = None
-    pin_id: UUID | None = None
-    target_user: SafeLabel | None = None
-    access_direction: Literal["entry", "exit"] | None = None
-    node_name: SafeLabel | None = None
-    node: SafeLabel | None = None
-    nodo: SafeLabel | None = None
-    nodo_3d: SafeLabel | None = None
-    mesh: SafeLabel | None = None
-    mesh_name: SafeLabel | None = None
-    room: SafeLabel | None = None
-    habitacion: SafeLabel | None = None
-    nodes: list[SafeLabel] | None = Field(default=None, max_length=32)
-
-    @field_validator("punto", mode="before")
-    @classmethod
-    def validate_point(cls, value: object) -> object:
-        if value is None:
-            return value
-        if (
-            not isinstance(value, list)
-            or len(value) != 3
-            or any(
-                isinstance(component, bool)
-                or not isinstance(component, (int, float))
-                or not math.isfinite(float(component))
-                or abs(float(component)) > 100_000
-                for component in value
-            )
-        ):
-            raise ValueError("metadata.punto debe ser un vector XYZ numérico válido")
-        return value
-
-    @field_validator("access_direction", mode="before")
-    @classmethod
-    def normalize_access_direction(cls, value: object) -> object:
-        if isinstance(value, str):
-            direction = value.strip().lower()
-            return {"entrada": "entry", "salida": "exit"}.get(direction, direction)
-        return value
-
-
-_VALUE_OBJECT_KEYS = {
-    "temperature_c", "celsius", "lectura", "value", "valor", "voltage_v", "voltage",
-    "v", "power_w", "watts", "w", "power_kw", "count", "personas",
-}
-_SAFE_LABEL_ADAPTER = TypeAdapter(SafeLabel)
-_SAFE_AUDIT_VALUE_ADAPTER = TypeAdapter(SafeLabel)
-
-
-def validate_telemetry_value(value: Any, *, depth: int = 0) -> Any:
-    if value is None or isinstance(value, bool):
-        return value
-    if isinstance(value, (int, float)):
-        if not math.isfinite(float(value)) or abs(float(value)) > 1_000_000_000:
-            raise ValueError("El valor numérico está fuera de rango")
-        return value
-    if isinstance(value, str):
-        return _SAFE_LABEL_ADAPTER.validate_python(value)
-    if isinstance(value, dict) and depth == 0 and len(value) <= 12:
-        if any(not isinstance(key, str) or key not in _VALUE_OBJECT_KEYS for key in value):
-            raise ValueError("El objeto valor contiene campos no permitidos")
-        return {key: validate_telemetry_value(item, depth=1) for key, item in value.items()}
-    raise ValueError("El valor debe ser escalar o un objeto numérico conocido")
-
-
-class TelemetryEnvelope(StrictModel):
-    event_id: UUID | None = None
-    source_id: SafeIdentifier | None = None
-    origen: SafeIdentifier | None = None
-    tipo_evento: EventType
-    event_type: EventType | None = None
-    timestamp: datetime | None = None
-    zona: SafeLabel | None = None
-    zone: SafeLabel | None = None
-    valor: Any = None
-    metadata: TelemetryMetadata = Field(default_factory=TelemetryMetadata)
-    temperature_c: float | None = Field(default=None, ge=-50, le=150, strict=True)
-    voltage_v: float | None = Field(default=None, ge=0, le=1000, strict=True)
-    power_kw: float | None = Field(default=None, ge=0, le=100_000, strict=True)
-    energy_kwh: float | None = Field(default=None, ge=0, le=1_000_000_000, strict=True)
-    occupancy: int | None = Field(default=None, ge=0, le=1_000_000, strict=True)
-    intrusion: bool = False
-    lockdown: bool = False
-    message: SafeText | None = None
-    camera_id: SafeIdentifier | None = None
-
-    @field_validator("valor")
-    @classmethod
-    def validate_value(cls, value: Any) -> Any:
-        return validate_telemetry_value(value)
-
-    @model_validator(mode="after")
-    def require_source(self) -> "TelemetryEnvelope":
-        if not (self.source_id or self.origen):
-            raise ValueError("El evento requiere source_id u origen")
-        if self.source_id and self.origen and self.source_id != self.origen:
-            raise ValueError("source_id y origen deben identificar la misma fuente")
-        if self.event_type and self.event_type != self.tipo_evento:
-            raise ValueError("event_type y tipo_evento deben coincidir")
-        if self.tipo_evento == "camera_selected":
-            camera_ids = [
-                value for value in (
-                    self.camera_id,
-                    self.metadata.camera_id,
-                    self.metadata.cameraId,
-                    self.valor if isinstance(self.valor, str) else None,
-                ) if value is not None
-            ]
-            if len(set(camera_ids)) > 1:
-                raise ValueError("La selección contiene identificadores de cámara distintos")
-        return self
-
-
 class LoginRequest(StrictModel):
     username: Annotated[
         str,
         StringConstraints(strip_whitespace=True, min_length=3, max_length=80, pattern=r"^[\w.@:+-]+$"),
     ]
-    password: Annotated[str, StringConstraints(min_length=16, max_length=256)]
+    password: Annotated[str, StringConstraints(min_length=8, max_length=256)]
 
     @field_validator("username")
     @classmethod
@@ -221,11 +39,7 @@ class LoginRequest(StrictModel):
 
 
 class RefreshRequest(StrictModel):
-    refresh_token: Annotated[str, StringConstraints(min_length=20, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")]
-
-
-class LogoutRequest(StrictModel):
-    refresh_token: Annotated[str, StringConstraints(min_length=20, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")]
+    refresh_token: Annotated[str, StringConstraints(min_length=20, max_length=4096)]
 
 
 class TokenResponse(StrictModel):
@@ -245,22 +59,16 @@ class UserResponse(StrictModel):
 class TelemetryEvent(StrictModel):
     event_id: UUID = Field(default_factory=uuid4)
     source_id: SafeIdentifier
-    event_type: EventType = "telemetry"
+    event_type: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=40)] = "telemetry"
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    temperature_c: float | None = Field(default=None, ge=-50, le=150, strict=True)
-    voltage_v: float | None = Field(default=None, ge=0, le=1000, strict=True)
-    power_kw: float | None = Field(default=None, ge=0, le=100_000, strict=True)
-    energy_kwh: float | None = Field(default=None, ge=0, le=1_000_000_000, strict=True)
-    occupancy: int | None = Field(default=None, ge=0, le=1_000_000, strict=True)
+    temperature_c: float | None = Field(default=None, ge=-50, le=150)
+    voltage_v: float | None = Field(default=None, ge=0, le=1000)
+    power_kw: float | None = Field(default=None, ge=0, le=100_000)
+    energy_kwh: float | None = Field(default=None, ge=0, le=1_000_000_000)
+    occupancy: int | None = Field(default=None, ge=0, le=1_000_000)
     intrusion: bool = False
     lockdown: bool = False
-    message: TelemetryMessage | None = None
-
-    @model_validator(mode="after")
-    def require_voltage_value_for_voltage_event(self) -> "TelemetryEvent":
-        if self.event_type in {"voltaje", "voltage"} and self.voltage_v is None:
-            raise ValueError("Un evento de voltaje requiere una lectura numérica explícita")
-        return self
+    message: Annotated[str, StringConstraints(strip_whitespace=True, max_length=500)] | None = None
 
 
 class ChatRequest(StrictModel):
@@ -273,9 +81,9 @@ class ChatResponse(StrictModel):
 
 
 class PinGenerateRequest(StrictModel):
-    door_name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=2, max_length=80, pattern=r"^[^\x00-\x1f\x7f]+$")]
-    duration_hours: int = Field(ge=1, le=720, strict=True)
-    target_user: Annotated[str, StringConstraints(strip_whitespace=True, min_length=2, max_length=120, pattern=r"^[^\x00-\x1f\x7f]+$")]
+    door_name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=2, max_length=80)]
+    duration_hours: int = Field(ge=1, le=720)
+    target_user: Annotated[str, StringConstraints(strip_whitespace=True, min_length=2, max_length=120)]
 
 
 class PinGenerateResponse(StrictModel):
@@ -289,14 +97,14 @@ class PinGenerateResponse(StrictModel):
 
 
 class PinValidationRequest(StrictModel):
-    door_name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=2, max_length=80, pattern=r"^[^\x00-\x1f\x7f]+$")]
-    pin_code: Annotated[str, StringConstraints(min_length=4, max_length=8, pattern=r"^[0-9]+$")]
+    door_name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=2, max_length=80)]
+    pin_code: Annotated[str, StringConstraints(min_length=4, max_length=8, pattern=r"^\d+$")]
 
 
 class ServiceErrorRequest(StrictModel):
-    error_type: SafeLabel
-    description: SafeLogText
-    duration_ms: int | None = Field(default=None, ge=0, le=86_400_000, strict=True)
+    error_type: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)]
+    description: SafeText
+    duration_ms: int | None = Field(default=None, ge=0, le=86_400_000)
 
 
 class AuditAction(str, Enum):
@@ -310,29 +118,6 @@ class AuditAction(str, Enum):
 class AuditActionRequest(StrictModel):
     action: AuditAction
     details: dict[str, Any] = Field(default_factory=dict)
-
-    @model_validator(mode="after")
-    def validate_details(self) -> "AuditActionRequest":
-        allowed_by_action = {
-            AuditAction.LOCKDOWN_ACTIVATED: {"source"},
-            AuditAction.LOCKDOWN_RELEASED: {"source"},
-            AuditAction.EVACUATION_ACTIVATED: {"source"},
-            AuditAction.EVACUATION_RELEASED: {"source"},
-            AuditAction.ALARM_ACKNOWLEDGED: {"event_id", "code", "zone", "source"},
-        }
-        allowed = allowed_by_action[self.action]
-        if len(self.details) > 12 or self.details.keys() - allowed:
-            raise ValueError("Los detalles no corresponden a la acción de auditoría")
-        for key, value in self.details.items():
-            if not isinstance(key, str) or not key.isidentifier():
-                raise ValueError("Clave de auditoría inválida")
-            if isinstance(value, str):
-                _SAFE_AUDIT_VALUE_ADAPTER.validate_python(value)
-            elif value is not None and (isinstance(value, (dict, list, tuple, set)) or not isinstance(value, (bool, int, float))):
-                raise ValueError("Los valores de auditoría deben ser escalares")
-            elif isinstance(value, float) and not math.isfinite(value):
-                raise ValueError("El valor de auditoría debe ser finito")
-        return self
 
 
 class PinValidationResponse(StrictModel):

@@ -62,7 +62,7 @@ export function mountSecurityControls(root, { role, onModeChange, onOpenCamera, 
 
   for (const camera of CAMERA_MARKERS) {
     const number = Number(/^CAM_(\d+)_/.exec(camera.cameraId)?.[1]);
-    const shortName = camera.shortName || camera.cameraId.replace(/^CAM_\d+_/, "").replaceAll("_", " ");
+    const shortName = camera.cameraId.replace(/^CAM_\d+_/, "").replaceAll("_", " ");
     const channel = document.createElement("button");
     channel.type = "button";
     channel.className = "camera-channel-button";
@@ -106,16 +106,6 @@ export function mountSecurityControls(root, { role, onModeChange, onOpenCamera, 
   let schedule = readSchedule();
   let initialMode = readMode();
 
-  const canOperate = ["admin", "operator"].includes(role);
-  lockdownButton.disabled = !canOperate;
-  evacuationButton.disabled = !canOperate;
-  toggle.disabled = !canOperate;
-  scheduleInput.disabled = !canOperate;
-  if (!canOperate) {
-    lockdownButton.title = "La activación está reservada a Operador o Administrador";
-    evacuationButton.title = lockdownButton.title;
-  }
-
   lockdownButton.addEventListener("click", () => lockdownDialog.showModal());
   dismissLockdown.addEventListener("click", () => lockdownDialog.close("cancel"));
   lockdownDialog.addEventListener("click", (event) => {
@@ -156,7 +146,7 @@ export function mountSecurityControls(root, { role, onModeChange, onOpenCamera, 
     const enabled = Boolean(schedule?.enabled);
     toggle.textContent = enabled ? "CANCELAR CIERRE" : "PROGRAMAR CIERRE";
     scheduleInput.value = enabled ? schedule.time : scheduleInput.value || "18:00";
-    scheduleInput.disabled = enabled || !canOperate;
+    scheduleInput.disabled = enabled;
     status.textContent = enabled ? `Cierre local programado diariamente a las ${schedule.time}.` : "Sin cierre automático programado.";
   }
 
@@ -189,7 +179,7 @@ export function mountSecurityControls(root, { role, onModeChange, onOpenCamera, 
     selectedCameraId = id;
     const marker = CAMERA_MARKERS.find((item) => item.cameraId === id);
     selectedCamera = marker
-      ? { ...marker, id, cameraId: id, numericId: Number(/^CAM_(\d+)_/.exec(id)?.[1]), shortName: marker.shortName || id.replace(/^CAM_\d+_/, "").replaceAll("_", " "), location }
+      ? { ...marker, id, cameraId: id, numericId: Number(/^CAM_(\d+)_/.exec(id)?.[1]), shortName: id.replace(/^CAM_\d+_/, "").replaceAll("_", " "), location }
       : { id, cameraId: id, numericId: Number(/^CAM_(\d+)_/.exec(id)?.[1]), shortName: id, zone: location, location };
     cameraPreview.disabled = false;
     cameraPreviewName.textContent = selectedCamera.shortName;

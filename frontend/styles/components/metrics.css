@@ -22,7 +22,6 @@
 .metric-card-energy { --metric-color: var(--aegis-accent); --metric-rgb: var(--aegis-accent-rgb); }
 .metric-card-occupancy { --metric-color: var(--aegis-accent); --metric-rgb: var(--aegis-accent-rgb); }
 .metric-card-temperature { --metric-color: #ff754f; --metric-rgb: 255,117,79; }
-.metric-card-temperature { min-height: 164px; }
 .metric-card-temperature.is-warning { --metric-color: #ff8800; --metric-rgb: 255,136,0; }
 .metric-card-temperature.is-critical { --metric-color: var(--aegis-red); --metric-rgb: 255,0,85; }
 .metric-card.is-warning .metric-value { color: var(--aegis-orange); }
@@ -45,11 +44,9 @@
 .metric-chart-state { position: absolute; right: 0; bottom: 4px; left: 0; display: flex; align-items: center; justify-content: center; gap: 6px; color: var(--aegis-text-muted); font: 600 6px var(--font-mono); letter-spacing: .35px; pointer-events: none; }
 .metric-chart-state[hidden] { display: none; }
 .metric-chart-state i { width: 4px; height: 4px; background: var(--metric-color,var(--aegis-accent)); border-radius: 50%; box-shadow: 0 0 7px var(--metric-color,var(--aegis-accent)); animation: metric-signal 1s ease-in-out infinite alternate; }
-.metric-card-temperature .metric-visual-area { min-height: 58px; padding-top: 13px; }
-.metric-card-temperature .metric-area-chart { height: 45px; }
-.metric-visual-occupancy { min-height: 126px; }
-.occupancy-summary { display: flex; min-height: 68px; align-items: center; gap: 11px; }
-.occupancy-donut { position: relative; width: 68px; height: 68px; flex: 0 0 auto; filter: drop-shadow(0 0 9px rgba(var(--aegis-accent-rgb),.12)); }
+.metric-visual-occupancy { min-height: 166px; }
+.occupancy-summary { display: flex; min-height: 84px; align-items: center; gap: 14px; }
+.occupancy-donut { position: relative; width: 82px; height: 82px; flex: 0 0 auto; filter: drop-shadow(0 0 9px rgba(var(--aegis-accent-rgb),.12)); }
 .occupancy-donut svg { width: 100%; height: 100%; overflow: visible; transform: rotate(-90deg); }
 .occupancy-donut circle { fill: none; stroke-width: 5; }
 .donut-track { stroke: rgba(var(--aegis-accent-rgb),.12); }
@@ -62,7 +59,7 @@
 .occupancy-peak { color: var(--aegis-text-main); font: 700 20px var(--font-mono); line-height: 1; }
 .occupancy-peak-label,.occupancy-range { color: var(--aegis-text-muted); font: 600 6px var(--font-mono); letter-spacing: .25px; }
 .occupancy-history { position: relative; margin-top: 8px; padding-top: 15px; border-top: 1px solid rgba(184,210,240,.08); }
-.occupancy-history-chart { display: block; width: 100%; height: 44px; overflow: visible; }
+.occupancy-history-chart { display: block; width: 100%; height: 58px; overflow: visible; }
 .occupancy-date-label { fill: var(--aegis-text-muted); font: 5px var(--font-mono); }
 .occupancy-average { stroke: rgba(var(--aegis-accent-rgb),.64); stroke-dasharray: 3 3; stroke-width: 1; vector-effect: non-scaling-stroke; }
 .occupancy-average[hidden] { display: none; }
@@ -72,7 +69,7 @@
 .occupancy-history-legend span:first-child { display: inline-flex; align-items: center; gap: 5px; }
 .occupancy-history-legend i { width: 9px; border-top: 1px dashed var(--aegis-accent); }
 .occupancy-days-count { white-space: nowrap; }
-.metric-card-occupancy { min-height: 238px; }
+.metric-card-occupancy { min-height: 304px; }
 .dashboard-view.mode-lockdown .metric-area-chart stop,.dashboard-view.mode-evacuacion .metric-area-chart stop,.dashboard-view.mode-cierre .metric-area-chart stop { stop-color: var(--aegis-accent) !important; }
 @media (prefers-reduced-motion: reduce) { .metric-chart-state i { animation: none; }.donut-progress { transition: none; } }
 @keyframes metric-signal { from { opacity: .4; transform: scaleY(.64); } to { opacity: 1; transform: scaleY(1); } }

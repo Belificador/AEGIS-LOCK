@@ -25,7 +25,7 @@ export function mountAdminDiagnostics({ session, onClose } = {}) {
         <h3 class="admin-subheading">TRAZABILIDAD RECIENTE</h3><div class="admin-table-wrap"><table><thead><tr><th>Fecha</th><th>Acción</th><th>Operador</th><th>Detalle</th></tr></thead><tbody data-audit-rows></tbody></table></div>
       </section>
       <section class="admin-diagnostics-panel" data-panel="errors" hidden>
-        <div class="admin-panel-toolbar"><span>Errores HTTP, fallos del relay REST y duración de sesión</span><button type="button" data-refresh-errors>ACTUALIZAR</button></div>
+        <div class="admin-panel-toolbar"><span>Errores HTTP, desconexiones y duración de sesión WebSocket</span><button type="button" data-refresh-errors>ACTUALIZAR</button></div>
         <div class="admin-table-wrap"><table><thead><tr><th>Fecha</th><th>Tipo</th><th>Descripción</th><th>Duración</th></tr></thead><tbody data-error-rows></tbody></table></div>
         <p class="admin-page-info" data-error-count></p>
         <button type="button" data-load-more-errors hidden>CARGAR MÁS ERRORES</button>

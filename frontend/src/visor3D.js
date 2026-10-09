@@ -2,14 +2,11 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { addCameraMarkers } from "./components/viewport/camera-markers.js";
-import { getVoltageReading, VOLTAGE_NORMAL_MAX_V, VOLTAGE_NORMAL_MIN_V } from "./voltage-reading.js";
-import NAV_GRID from "../../models_3d/nav/navgrid.json";
 
 const MODEL_URL = new URL("../../models_3d/oficina/edificio.glb", import.meta.url).href;
 const MODEL_DISPLAY_SIZE = 16.5;
 const MODEL_VIEW_FILL = 0.5;
 const MODEL_VIEW_DIRECTION = new THREE.Vector3(1, 0.55, 1).normalize();
-const ZONE_LIGHT_MAX_INTENSITY = 24;
 
 export class Visor3D {
   constructor(container, { onLoad = () => {}, onError = () => {}, onCameraSelected = () => {} } = {}) {
@@ -19,7 +16,6 @@ export class Visor3D {
     this.onCameraSelected = onCameraSelected;
     this.destroyed = false;
     this.zoneEvents = new Map();
-    this.telemetryLights = new Map();
     this.cameraMarkers = null;
     this.raycaster = new THREE.Raycaster();
     this.pointer = new THREE.Vector2();
@@ -120,7 +116,6 @@ export class Visor3D {
       this.model.position.sub(scaledCenter);
       this.model.updateMatrixWorld(true);
       this.scene.add(this.model);
-      this.createTelemetryLights();
       this.cameraMarkers = addCameraMarkers(THREE, this.model, MODEL_DISPLAY_SIZE / maxDimension, (camera) => {
         this.onCameraSelected(camera);
       });
@@ -152,12 +147,6 @@ export class Visor3D {
   }
 
   applyZoneEvent(zone, event) {
-    const type = String(event.tipo_evento || event.event_type || "").toLowerCase();
-    if (["iluminacion", "illumination", "lighting"].includes(type)) {
-      this.applyTelemetryLighting(event);
-      return;
-    }
-
     const matching = [];
     this.model?.traverse((node) => {
       if (!node.isMesh || !isInZone(node, zone, event.metadata)) return;
@@ -176,41 +165,6 @@ export class Visor3D {
         }
       }
     }
-  }
-
-  createTelemetryLights() {
-    const transform = NAV_GRID.transform || {};
-    const scale = Number(transform.scale) || 1;
-    const positionX = Number(transform.positionX) || 0;
-    const positionY = Number(transform.positionY) || 0;
-    const positionZ = Number(transform.positionZ) || 0;
-    for (const zone of NAV_GRID.zones || []) {
-      if (!Array.isArray(zone.centre) || zone.centre.length < 2) continue;
-      const local = new THREE.Vector3(
-        (zone.centre[0] - positionX) / scale,
-        (2.25 - positionY) / scale,
-        (zone.centre[1] - positionZ) / scale,
-      );
-      const light = new THREE.PointLight(0xffe9c7, 0, 14, 1.7);
-      light.position.copy(this.model.localToWorld(local));
-      light.userData.zoneId = zone.id;
-      this.scene.add(light);
-      this.telemetryLights.set(zone.id, light);
-    }
-  }
-
-  applyTelemetryLighting(event) {
-    const metadata = event.metadata && typeof event.metadata === "object" ? event.metadata : {};
-    const rawValue = event.illumination_percent ?? event.valor;
-    const value = Number(rawValue ?? (metadata.factor_electrico != null ? Number(metadata.factor_electrico) * 100 : NaN));
-    if (!Number.isFinite(value)) return;
-    const level = THREE.MathUtils.clamp(value, 0, 100) / 100;
-    const rawZoneId = metadata.zona_id;
-    const zoneId = rawZoneId == null ? null : Number(rawZoneId);
-    const targetLights = zoneId == null
-      ? [...this.telemetryLights.values()]
-      : [this.telemetryLights.get(zoneId)].filter(Boolean);
-    for (const light of targetLights) light.intensity = ZONE_LIGHT_MAX_INTENSITY * level;
   }
 
   _cameraMarkerAt(clientX, clientY) {
@@ -286,8 +240,6 @@ export class Visor3D {
     this.renderer.domElement.removeEventListener("pointercancel", this._onPointerCancel);
     this.controls.dispose();
     this.cameraMarkers?.dispose();
-    for (const light of this.telemetryLights.values()) this.scene.remove(light);
-    this.telemetryLights.clear();
     this.model?.traverse((node) => {
       if (!node.isMesh) return;
       node.geometry.dispose();
@@ -332,13 +284,8 @@ function getEventColor(event) {
   const type = String(event.tipo_evento || "").toLowerCase();
   const denied = type === "acceso_pin" && String(event.valor).toUpperCase() === "DENIED";
   const criticalTemperature = (type === "temperatura" || event.temperature_c != null) && Number(event.temperature_c ?? event.valor) > 38;
-  const voltage = getVoltageReading(event);
-  const powerFailure = voltage === 0;
-  const voltageFluctuation = Array.isArray(event.alerts)
-    && event.alerts.some((alert) => alert.code === "VOLTAGE_FLUCTUATION")
-    || (voltage != null && voltage !== 0 && (voltage < VOLTAGE_NORMAL_MIN_V || voltage > VOLTAGE_NORMAL_MAX_V));
+  const powerFailure = (type === "voltaje" || event.voltage_v != null) && Number(event.voltage_v ?? event.valor) === 0;
   if (denied || criticalTemperature || powerFailure) return { color: new THREE.Color("#ff3159"), intensity: 3.5 };
-  if (voltageFluctuation) return { color: new THREE.Color("#ffad42"), intensity: 2.4 };
   if (type === "temperatura" || type === "voltaje" || event.temperature_c != null || event.voltage_v != null) {
     return { color: new THREE.Color("#3bffad"), intensity: 1.65 };
   }

@@ -5,8 +5,6 @@ import hmac
 from fastapi import APIRouter, HTTPException, Request
 
 from backend.config import get_settings
-from backend.core.log_safety import redact_sensitive_text
-from backend.core.rate_limit import limiter
 from backend.models.schemas import ServiceErrorRequest
 from backend.services.postgres_client import postgres_service
 
@@ -14,7 +12,6 @@ router = APIRouter(prefix="/internal", tags=["internal service"])
 
 
 @router.post("/errors")
-@limiter.limit("30/minute")
 async def receive_service_error(payload: ServiceErrorRequest, request: Request) -> dict[str, bool]:
     settings = get_settings()
     authorization = request.headers.get("authorization", "")
@@ -24,7 +21,7 @@ async def receive_service_error(payload: ServiceErrorRequest, request: Request) 
         raise HTTPException(status_code=403, detail="Servicio no autorizado")
     await postgres_service.write_error_log(
         error_type=payload.error_type,
-        description=redact_sensitive_text(payload.description),
+        description=payload.description,
         duration_ms=payload.duration_ms,
     )
     return {"stored": postgres_service.pool is not None}

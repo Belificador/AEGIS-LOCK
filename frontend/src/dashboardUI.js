@@ -1,6 +1,5 @@
 import { mountHeader } from "./components/header/header.js";
 import { mountCriticalAlert } from "./components/sidebar-right/critical-alert.js";
-import { mountGlobalAlertBanner } from "./components/global-alert-banner.js";
 import { mountSidebarLeft } from "./components/sidebar-left/sidebar-left.js";
 import { mountSidebarRight } from "./components/sidebar-right/sidebar-right.js";
 import { mountViewport } from "./components/viewport/viewport.js";
@@ -12,12 +11,11 @@ import { mountPanelExpansion } from "./components/panel-expansion.js";
 import { mountSidebarResize } from "./components/sidebar-resize.js";
 import { CAMERA_MARKERS } from "./components/viewport/camera-markers.js";
 import { patchState, state } from "./store.js";
-import { getVoltageReading } from "./voltage-reading.js";
 
 const AUTH_URL = import.meta.env.VITE_AUTH_API_URL || "https://aegis-lock-api.onrender.com/api/login";
 const API_ROOT = AUTH_URL.replace(/\/(?:api\/login|api\/v1\/auth\/login)\/?$/, "");
 
-export function mountDashboard({ user, session, onLogout }) {
+export function mountDashboard({ user, session, onLogout, wsUrl }) {
   patchState({
     user,
     mode: "NORMAL",
@@ -48,8 +46,7 @@ export function mountDashboard({ user, session, onLogout }) {
       }
     },
   });
-  const globalAlerts = mountGlobalAlertBanner();
-  const sidebarLeft = mountSidebarLeft(document.querySelector("#sidebar-left-root"), { session, user });
+  const sidebarLeft = mountSidebarLeft(document.querySelector("#sidebar-left-root"), getAssistantContext);
   const viewport = mountViewport(document.querySelector("#viewport-root"), { onCameraSelected: openCamera });
   const right = mountSidebarRight(document.querySelector("#sidebar-right-root"), {
     role: user.role,
@@ -68,7 +65,7 @@ export function mountDashboard({ user, session, onLogout }) {
       metadata: { camera_id: camera.id, name: camera.shortName, location: camera.location, feed_url: feedUrl },
     }),
   });
-  const cameraPublisher = session?.access_token && ["operator", "admin"].includes(user.role)
+  const cameraPublisher = session?.access_token
     ? new TelemetryEmitter({ accessToken: () => session.access_token })
     : null;
   cameraPublisher?.connect();
@@ -76,7 +73,8 @@ export function mountDashboard({ user, session, onLogout }) {
   const root = dashboard;
   const panelExpansion = mountPanelExpansion();
   const sidebarResize = mountSidebarResize(dashboard.querySelector(".dashboard-grid"));
-  const receiver = new DataReceiver({ onEvent: handleEvent, onLatency: (latency) => header.setLatency(latency), onStatus: (connection) => {
+  const voltageReadings = new Map();
+  const receiver = new DataReceiver({ url: wsUrl, onEvent: handleEvent, onLatency: (latency) => header.setLatency(latency), onStatus: (connection) => {
     const modelConnected = connection === "MODEL_CONNECTED";
     patchState({ connection, modelConnected });
     header.setConnection(connection);
@@ -163,7 +161,7 @@ export function mountDashboard({ user, session, onLogout }) {
       id: cameraId,
       cameraId,
       numericId: Number.isFinite(number) ? number : null,
-      shortName: camera.shortName || cameraId.replace(/^CAM_\d+_/, "").replaceAll("_", " "),
+      shortName: cameraId.replace(/^CAM_\d+_/, "").replaceAll("_", " "),
       location: camera.zone || camera.location || "Ubicación pendiente",
     };
     right.updateCamera({
@@ -193,16 +191,17 @@ export function mountDashboard({ user, session, onLogout }) {
 
     const event = payload.event;
     const alerts = Array.isArray(payload.alerts) ? payload.alerts : [];
-    globalAlerts.ingest({ event, alerts });
     criticalAlerts.ingest({ event, alerts });
+    const voltageZone = event.zone || event.zona || "GLOBAL";
+    const priorVoltage = voltageReadings.get(voltageZone);
     sidebarLeft.update(event);
-    viewport.update({ ...event, alerts });
+    viewport.update(event);
     if (String(event.tipo_evento).toLowerCase() === "camera_selected" && event.origen !== "aegis-dashboard") right.updateCamera(event);
     patchState({ modelConnected: true, connection: "MODEL_CONNECTED", telemetry: { ...state.telemetry, ...event } });
     right.events.append(event, { alerts, timestamp: event.timestamp });
     for (const alert of alerts) {
       patchState({ recentAlerts: [...state.recentAlerts.slice(-9), alert.message] });
-      if (state.mode === "NORMAL" && ["critical", "lockdown"].includes(alert.severity)) setMode("ALERTA", alert.code);
+      if (state.mode === "NORMAL") setMode("ALERTA", alert.code);
     }
 
     const deniedPin = String(event.tipo_evento).toLowerCase() === "acceso_pin" && String(event.valor).toUpperCase() === "DENIED";
@@ -214,10 +213,27 @@ export function mountDashboard({ user, session, onLogout }) {
     } else if (event.intrusion && !alerts.length && state.mode === "NORMAL") {
       setMode("ALERTA", "INTRUSIÓN DETECTADA");
     }
-    if (getVoltageReading(event) === 0) {
+    const currentVoltage = Number(event.voltage_v);
+    if (event.voltage_v != null && Number.isFinite(currentVoltage)) voltageReadings.set(voltageZone, currentVoltage);
+    if (event.voltage_v != null && Number.isFinite(currentVoltage) && priorVoltage != null && currentVoltage > 0 && currentVoltage < Number(priorVoltage)) {
+      const drop = `CAÍDA DE VOLTAJE · ${priorVoltage} V → ${currentVoltage} V${event.zone || event.zona ? ` · ${event.zone || event.zona}` : ""}`;
+      right.events.alert(drop, "warning");
+      patchState({ recentAlerts: [...state.recentAlerts.slice(-9), drop] });
+      if (state.mode === "NORMAL") setMode("ALERTA", "CAÍDA DE VOLTAJE");
+    }
+    if (event.voltage_v != null && currentVoltage === 0) {
       patchState({ recentAlerts: [...state.recentAlerts.slice(-9), "Apagón eléctrico detectado"] });
       if (state.mode === "NORMAL") setMode("ALERTA", "APAGÓN ELÉCTRICO");
     }
+  }
+
+  function getAssistantContext() {
+    return {
+      modelConnected: state.modelConnected,
+      mode: state.mode,
+      telemetry: state.telemetry,
+      recentAlerts: state.recentAlerts,
+    };
   }
 
   function destroy() {
@@ -225,13 +241,11 @@ export function mountDashboard({ user, session, onLogout }) {
     cameraPublisher?.destroy();
     adminDiagnostics?.dispose();
     criticalAlerts.dispose();
-    globalAlerts.dispose();
     cameraModal.dispose();
     panelExpansion.dispose();
     sidebarResize.destroy();
     viewport.destroy();
     right.destroy();
-    sidebarLeft.destroy();
     header.destroy();
     document.querySelectorAll("dialog[open]").forEach((dialog) => dialog.close());
     window.clearInterval(scheduleTimer);

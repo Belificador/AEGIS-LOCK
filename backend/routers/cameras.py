@@ -3,34 +3,29 @@
 from time import time
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException
 
 from backend.config import get_settings
-from backend.core.dependencies import current_claims
-from backend.core.rate_limit import limiter
+from backend.core.dependencies import require_operator
 from backend.services.camera_catalog import CAMERAS, signed_camera_url
 
 router = APIRouter(prefix="/cameras", tags=["cameras"])
 
 
 @router.get("")
-@limiter.limit("60/minute")
 async def camera_catalog(
-    request: Request,
-    _: Annotated[dict[str, Any], Depends(current_claims)],
+    _: Annotated[dict[str, Any], Depends(require_operator)],
 ) -> list[dict[str, str]]:
     return [
-        {"camera_id": camera["camera_id"], "name": camera["name"], "zone": camera["zone"]}
+        {"camera_id": camera["camera_id"], "zone": camera["zone"]}
         for camera in CAMERAS
     ]
 
 
 @router.get("/{camera_id}/feed-url")
-@limiter.limit("30/minute")
 async def camera_feed_url(
     camera_id: str,
-    request: Request,
-    _: Annotated[dict[str, Any], Depends(current_claims)],
+    _: Annotated[dict[str, Any], Depends(require_operator)],
 ) -> dict[str, Any]:
     settings = get_settings()
     expires_at = int(time()) + 3600
