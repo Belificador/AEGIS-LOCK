@@ -2,6 +2,7 @@
 
 import asyncio
 import contextlib
+from hashlib import sha256
 import json
 import logging
 import time
@@ -37,10 +38,18 @@ class ConnectionManager:
         self._consumer = f"api-{id(self):x}"
         self._channel = "aegis:telemetry:live:v1"
         self._latest_key = "aegis:telemetry:latest:v1"
+        self._local_states: dict[str, dict[str, Any]] = {}
+        self._state_hash_key = "aegis:telemetry:rest-states:v1"
         self._stream = "aegis:telemetry:persist:v1"
         self._stream_group = "aegis-telemetry-persistence"
 
-    async def start(self, storage_uri: str | None, rate_limiter: Any = None) -> None:
+    async def start(
+        self,
+        storage_uri: str | None,
+        rate_limiter: Any = None,
+        *,
+        enable_pubsub: bool = True,
+    ) -> None:
         if not storage_uri or not storage_uri.startswith(("redis://", "rediss://")):
             return
         try:
@@ -51,11 +60,12 @@ class ConnectionManager:
             except ResponseError as exc:
                 if "BUSYGROUP" not in str(exc):
                     raise
-            self._pubsub = self._redis.pubsub()
-            await self._pubsub.subscribe(self._channel)
-            self._pubsub_task = asyncio.create_task(self._listen_for_broadcasts(), name="aegis-telemetry-pubsub")
+            if enable_pubsub:
+                self._pubsub = self._redis.pubsub()
+                await self._pubsub.subscribe(self._channel)
+                self._pubsub_task = asyncio.create_task(self._listen_for_broadcasts(), name="aegis-telemetry-pubsub")
             self._persistence_task = asyncio.create_task(self._consume_persistence_stream(), name="aegis-telemetry-persistence")
-            logger.info("telemetry_pubsub_started")
+            logger.info("telemetry_persistence_stream_started pubsub=%s", enable_pubsub)
         except Exception:
             logger.exception("telemetry_pubsub_start_failed; using local websocket broadcast")
             await self.close()
@@ -90,6 +100,68 @@ class ConnectionManager:
         except Exception:
             logger.exception("telemetry_persistence_enqueue_failed; using local retry queue")
             return False
+
+    async def cache_telemetry_state(
+        self,
+        payload: dict[str, Any],
+        *,
+        only_if_absent: bool = False,
+    ) -> None:
+        event = payload.get("event") if isinstance(payload, dict) else None
+        if not isinstance(event, dict):
+            return
+        metadata = event.get("metadata") if isinstance(event.get("metadata"), dict) else {}
+        source = str(event.get("source_id") or event.get("origen") or "aegis")
+        event_type = str(event.get("tipo_evento") or event.get("event_type") or "telemetry")
+        if event_type in {"aforo", "occupancy"} and (
+            metadata.get("estado_actual") is False
+            or any(metadata.get(field) is not None for field in ("accion", "motivo", "enviados", "withdrawals"))
+        ):
+            event_type = "aforo_action"
+        zone = str(event.get("zona") or event.get("zone") or "GLOBAL")
+        field = sha256(f"{source}\0{event_type}\0{zone}".encode("utf-8")).hexdigest()
+        cached = json.loads(json.dumps(payload, separators=(",", ":"), default=str))
+        cached_event = cached.get("event")
+        if isinstance(cached_event, dict) and isinstance(cached_event.get("metadata"), dict):
+            cached_event["metadata"].pop("feed_url", None)
+        if only_if_absent:
+            self._local_states.setdefault(field, cached)
+        else:
+            self._local_states[field] = cached
+        if len(self._local_states) > 2048:
+            self._local_states.pop(next(iter(self._local_states)))
+        if self._redis is None:
+            return
+        try:
+            serialized = json.dumps(cached, separators=(",", ":"))
+            if only_if_absent:
+                await self._redis.hsetnx(self._state_hash_key, field, serialized)
+            else:
+                await self._redis.hset(self._state_hash_key, field, serialized)
+        except Exception:
+            logger.exception("telemetry_rest_state_cache_write_failed")
+
+    async def latest_rest_telemetry(self) -> list[dict[str, Any]]:
+        states = dict(self._local_states)
+        if self._redis is not None:
+            try:
+                remote = await self._redis.hgetall(self._state_hash_key)
+                for field, serialized in remote.items():
+                    try:
+                        payload = json.loads(serialized)
+                    except (TypeError, ValueError):
+                        continue
+                    if isinstance(payload, dict):
+                        states[field] = payload
+            except Exception:
+                logger.exception("telemetry_rest_state_cache_read_failed")
+        return sorted(
+            states.values(),
+            key=lambda payload: str((payload.get("event") or {}).get("timestamp") or ""),
+        )
+
+    async def latest_telemetry_states(self) -> list[dict[str, Any]]:
+        return await self.latest_rest_telemetry()
 
     async def _consume_persistence_stream(self) -> None:
         while True:

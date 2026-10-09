@@ -24,7 +24,6 @@ function showDashboard(user, session) {
       user,
       session: dashboardSession,
       onLogout: returnToLogin,
-      wsUrl: import.meta.env.VITE_WS_URL,
     });
   }, 240);
 }

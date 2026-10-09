@@ -17,7 +17,7 @@ import { getVoltageReading } from "./voltage-reading.js";
 const AUTH_URL = import.meta.env.VITE_AUTH_API_URL || "https://aegis-lock-api.onrender.com/api/login";
 const API_ROOT = AUTH_URL.replace(/\/(?:api\/login|api\/v1\/auth\/login)\/?$/, "");
 
-export function mountDashboard({ user, session, onLogout, wsUrl }) {
+export function mountDashboard({ user, session, onLogout }) {
   patchState({
     user,
     mode: "NORMAL",
@@ -76,7 +76,7 @@ export function mountDashboard({ user, session, onLogout, wsUrl }) {
   const root = dashboard;
   const panelExpansion = mountPanelExpansion();
   const sidebarResize = mountSidebarResize(dashboard.querySelector(".dashboard-grid"));
-  const receiver = new DataReceiver({ url: wsUrl, onEvent: handleEvent, onLatency: (latency) => header.setLatency(latency), onStatus: (connection) => {
+  const receiver = new DataReceiver({ onEvent: handleEvent, onLatency: (latency) => header.setLatency(latency), onStatus: (connection) => {
     const modelConnected = connection === "MODEL_CONNECTED";
     patchState({ connection, modelConnected });
     header.setConnection(connection);

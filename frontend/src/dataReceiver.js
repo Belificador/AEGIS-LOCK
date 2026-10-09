@@ -1,166 +1,129 @@
+import { resolveLatestTelemetryUrl } from "./telemetry-api-url.js";
 import { parseVoltageReading } from "./voltage-reading.js";
-import { resolveDashboardWebSocketUrl } from "./dashboard-websocket-url.js";
 
 const VITE_ENV = import.meta.env || {};
-const WS_URL = VITE_ENV.VITE_WS_URL;
-const RECONNECT_DELAY_MS = 5000;
+const LATEST_URL = resolveLatestTelemetryUrl(VITE_ENV.VITE_AUTH_API_URL);
+const POLL_INTERVAL_MS = 2000;
+const REQUEST_TIMEOUT_MS = 8000;
+const MAX_SEEN_EVENTS = 2048;
 
 export class DataReceiver {
-  constructor({ onEvent, onStatus, onLatency = () => {}, url = WS_URL }) {
+  constructor({ onEvent, onStatus, onLatency = () => {}, url = LATEST_URL, pollIntervalMs = POLL_INTERVAL_MS }) {
     this.onEvent = onEvent;
     this.onStatus = onStatus;
     this.onLatency = onLatency;
-    this.socket = null;
-    this.reconnectTimer = null;
-    this.heartbeatTimer = null;
-    this.pendingPing = null;
-    this.pingSequence = 0;
+    this.url = url || LATEST_URL;
+    this.pollIntervalMs = Math.max(500, Number(pollIntervalMs) || POLL_INTERVAL_MS);
+    this.pollTimer = null;
+    this.requestController = null;
+    this.requestTimeout = null;
+    this.polling = false;
     this.stopped = true;
     this.session = null;
-    this.url = resolveDashboardWebSocketUrl(url || WS_URL, VITE_ENV.VITE_AUTH_API_URL);
+    this.seenEvents = new Set();
+    this.hasApiConnection = false;
+    this.lastError = null;
   }
 
   start(session) {
+    if (!this.stopped) return;
     this.session = session;
     this.stopped = false;
-    this.connect();
+    this.onStatus("CONNECTING");
+    void this.poll();
+    this.pollTimer = window.setInterval(() => { void this.poll(); }, this.pollIntervalMs);
   }
 
   stop() {
     this.stopped = true;
-    window.clearTimeout(this.reconnectTimer);
-    window.clearInterval(this.heartbeatTimer);
-    this.reconnectTimer = null;
-    this.heartbeatTimer = null;
-    this.pendingPing = null;
+    window.clearInterval(this.pollTimer);
+    window.clearTimeout(this.requestTimeout);
+    this.pollTimer = null;
+    this.requestTimeout = null;
+    this.requestController?.abort();
+    this.requestController = null;
+    this.polling = false;
+    this.hasApiConnection = false;
+    this.lastError = null;
+    this.seenEvents.clear();
     this.onLatency(null);
-    const socket = this.socket;
-    this.socket = null;
-    socket?.close(1000, "Session ended");
+    this.onStatus("MODEL_DISCONNECTED");
   }
 
-  connect() {
-    if (this.stopped || this.socket) return;
-    this.onStatus("CONNECTING");
+  async poll() {
+    if (this.stopped || this.polling) return;
+    this.polling = true;
+    const controller = new AbortController();
+    this.requestController = controller;
+    const startedAt = performance.now();
+    this.requestTimeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
     try {
-      this.socket = new WebSocket(this.url);
-    } catch (error) {
-      this.onStatus("MODEL_DISCONNECTED");
-      this.onEvent({ kind: "error", detail: error.message || "No se pudo abrir el WebSocket." });
-      this.scheduleReconnect();
-      return;
-    }
-
-    const socket = this.socket;
-    socket.addEventListener("open", () => {
-      if (socket !== this.socket) return;
-      if (this.session?.access_token) {
-        socket.send(JSON.stringify({ type: "auth", token: this.session.access_token }));
-      }
-      this.onStatus("MODEL_CONNECTED");
-    });
-
-    socket.addEventListener("message", ({ data }) => {
-      if (socket !== this.socket) return;
-      let payload;
-      try {
-        payload = JSON.parse(data);
-      } catch {
-        this.onEvent({ kind: "error", detail: "El emisor envió un mensaje que no es JSON válido.", raw: data });
-        return;
+      const response = await fetch(this.url, {
+        method: "GET",
+        headers: this.session?.access_token
+          ? { Authorization: `Bearer ${this.session.access_token}`, Accept: "application/json" }
+          : { Accept: "application/json" },
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const detail = typeof payload.detail === "string" ? payload.detail : `Error HTTP ${response.status}`;
+        throw new Error(detail);
       }
 
-      if (payload?.kind === "connection") {
-        this.onStatus("MODEL_CONNECTED");
-        this.startHeartbeat(socket);
-        this.onEvent(payload);
-        return;
+      this.onLatency(performance.now() - startedAt);
+      this.lastError = null;
+      if (!this.hasApiConnection) {
+        this.hasApiConnection = true;
+        this.onEvent({ kind: "connection", status: "authenticated", transport: "http-poll" });
       }
 
-      if (payload?.kind === "heartbeat" && payload.type === "pong") {
-        if (this.pendingPing?.id === payload.id) {
-          this.onLatency(performance.now() - this.pendingPing.startedAt);
-          this.pendingPing = null;
-        }
-        return;
-      }
-
-      if (payload?.kind === "telemetry" && payload.event) {
-        this.onStatus("MODEL_CONNECTED");
+      const events = Array.isArray(payload.events) ? payload.events : [];
+      this.onStatus(events.length ? "MODEL_CONNECTED" : "WAITING_SIGNAL");
+      for (const item of events) {
+        const rawEvent = item?.event && typeof item.event === "object" ? item.event : item;
+        if (!rawEvent || typeof rawEvent !== "object") continue;
+        const dedupeKey = this.dedupeKey(rawEvent);
+        if (dedupeKey && this.seenEvents.has(dedupeKey)) continue;
+        if (dedupeKey) this.rememberEvent(dedupeKey);
         this.onEvent({
           kind: "telemetry",
-          event: normalizeTelemetry(payload.event),
-          alerts: Array.isArray(payload.alerts) ? payload.alerts : [],
-          raw: payload,
+          event: normalizeTelemetry(rawEvent),
+          alerts: Array.isArray(item.alerts) ? item.alerts : [],
+          raw: item,
         });
-        return;
       }
-
-      if (payload?.tipo_evento || payload?.kind === "event") {
-        this.onStatus("MODEL_CONNECTED");
-        this.onEvent({ kind: "telemetry", event: normalizeTelemetry(payload), alerts: [], raw: payload });
-        return;
-      }
-
-      if (payload?.kind === "error") {
-        this.onEvent(payload);
-        return;
-      }
-
-      // Algunos emisores envuelven el esquema del evento en `event` sin kind.
-      if (payload?.event?.tipo_evento) {
-        this.onStatus("MODEL_CONNECTED");
-        this.onEvent({ kind: "telemetry", event: normalizeTelemetry(payload.event), alerts: [], raw: payload });
-        return;
-      }
-      this.onEvent({ kind: "message", raw: payload });
-    });
-
-    socket.addEventListener("close", () => {
-      if (this.socket !== socket) return;
-      this.socket = null;
-      window.clearInterval(this.heartbeatTimer);
-      this.heartbeatTimer = null;
-      this.pendingPing = null;
+    } catch (error) {
+      if (this.stopped || controller.signal.aborted && this.requestController !== controller) return;
       this.onLatency(null);
-      if (!this.stopped) {
-        this.onStatus("MODEL_DISCONNECTED");
-        this.scheduleReconnect();
-      }
-    });
-
-    socket.addEventListener("error", () => {
-      if (socket !== this.socket) return;
+      const message = error?.message || "No se pudo consultar la telemetría de AEGIS.";
       this.onStatus("MODEL_DISCONNECTED");
-      // `close` schedules the retry in browsers after the failed handshake/socket.
-      if (socket.readyState !== WebSocket.CLOSED) socket.close();
-    });
+      if (message !== this.lastError) this.onEvent({ kind: "error", detail: message });
+      this.lastError = message;
+      this.hasApiConnection = false;
+    } finally {
+      window.clearTimeout(this.requestTimeout);
+      this.requestTimeout = null;
+      if (this.requestController === controller) this.requestController = null;
+      this.polling = false;
+    }
   }
 
-  scheduleReconnect() {
-    if (this.stopped || this.reconnectTimer !== null) return;
-    this.reconnectTimer = window.setTimeout(() => {
-      this.reconnectTimer = null;
-      this.connect();
-    }, RECONNECT_DELAY_MS);
+  dedupeKey(event) {
+    if (typeof event.event_id === "string" && event.event_id) return event.event_id;
+    const type = event.tipo_evento || event.event_type || "telemetry";
+    const zone = event.zone || event.zona || "GLOBAL";
+    if (!event.timestamp) return null;
+    return `${type}:${zone}:${event.timestamp}:${JSON.stringify(event.valor ?? null)}`;
   }
 
-  startHeartbeat(socket) {
-    window.clearInterval(this.heartbeatTimer);
-    this.pendingPing = null;
-    this.heartbeatTimer = window.setInterval(() => {
-      if (this.stopped || socket !== this.socket || socket.readyState !== WebSocket.OPEN) return;
-      if (this.pendingPing && performance.now() - this.pendingPing.startedAt < 10_000) return;
-      const id = `${Date.now()}-${++this.pingSequence}`;
-      const startedAt = performance.now();
-      this.pendingPing = { id, startedAt };
-      try {
-        socket.send(JSON.stringify({ type: "ping", id }));
-      } catch {
-        this.pendingPing = null;
-      }
-    }, 5000);
+  rememberEvent(eventId) {
+    this.seenEvents.add(eventId);
+    if (this.seenEvents.size > MAX_SEEN_EVENTS) {
+      this.seenEvents.delete(this.seenEvents.values().next().value);
+    }
   }
 }
 
@@ -176,14 +139,15 @@ export function normalizeTelemetry(input = {}) {
   if (type === "aforo" || type === "occupancy") {
     const actionEvent = metadata.estado_actual === false
       || ["accion", "motivo", "enviados", "withdrawals"].some((field) => metadata[field] != null);
-    if (actionEvent) delete event.occupancy;
-    else event.occupancy = Number(value);
+    const occupancy = value == null || value === "" ? null : Number(value);
+    if (actionEvent || occupancy == null || !Number.isFinite(occupancy)) delete event.occupancy;
+    else event.occupancy = occupancy;
   }
   if (["iluminacion", "illumination", "lighting"].includes(type)) {
-    const percent = Number(value);
-    const factorPercent = Number(metadata.factor_electrico) * 100;
-    if (value !== "" && Number.isFinite(percent)) event.illumination_percent = percent;
-    else if (Number.isFinite(factorPercent)) event.illumination_percent = factorPercent;
+    const percent = value == null || value === "" ? null : Number(value);
+    const factorPercent = metadata.factor_electrico == null ? null : Number(metadata.factor_electrico) * 100;
+    if (percent != null && Number.isFinite(percent)) event.illumination_percent = percent;
+    else if (factorPercent != null && Number.isFinite(factorPercent)) event.illumination_percent = factorPercent;
   }
   if (type === "voltaje" || type === "voltage") {
     const objectValue = input.valor && typeof input.valor === "object" ? input.valor : {};

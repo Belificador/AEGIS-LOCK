@@ -12,10 +12,10 @@ backend/
   config.py               Configuración pydantic-settings
   core/                   JWT, rate limiting, dependencias y middleware
   models/schemas.py       Validación de eventos
-  routers/                Auth, telemetría, WebSocket y chat local
+  routers/                Auth, telemetría REST y chat local
   services/               PostgreSQL, reglas y adaptador de IA local
   sql/                    Esquema PostgreSQL aplicado al iniciar
-  tests/                  Reglas, JWT y flujo WebSocket
+  tests/                  Reglas, JWT y flujo REST de telemetría
 frontend/
   index.html              Intro, login, dashboard y modales
   styles/main.css         Entrada CSS con imports por panel
@@ -26,7 +26,7 @@ frontend/
   src/components/viewport/ Estado de conexión y captura de señal
   src/components/sidebar-right/ Consola, emergencia y cierre
   src/auth.js             Login simulado o REST configurable
-  src/dataReceiver.js     WebSocket opcional y telemetría demo
+  src/dataReceiver.js     Poll REST de telemetría cada 2 s
 ```
 
 ## Inicio rápido del prototipo
@@ -54,31 +54,28 @@ métricas y los historiales permanecen vacíos y el dashboard indica
 El video está en `frontend/public/media/aegis-intro.mp4` y se sirve directamente
 desde el frontend local.
 
-### Autenticación manual y eventos REST/WebSocket
+### Autenticación y telemetría REST
 
-El formulario envía las credenciales a Aegis y obtiene el JWT que exige
-`/ws/dashboard`. Configura estos valores en el entorno de build del Static Site
-de Render (las variables `VITE_*` se incorporan al JavaScript y son públicas):
+El formulario envía las credenciales a AEGIS y obtiene el JWT usado por el
+dashboard para consultar la telemetría REST. Configura `VITE_AUTH_API_URL` en el
+entorno de build del Static Site de Render:
 
 El navegador llama a FastAPI; FastAPI valida la sesión y consulta PostgreSQL. El
 navegador nunca recibe la URL ni las credenciales de la base de datos.
 
 ```env
 VITE_AUTH_API_URL=https://aegis-lock-api.onrender.com/api/login
-VITE_WS_URL=wss://aegis-lock-api.onrender.com/ws/dashboard
 ```
 
-`VITE_WS_URL` es el receptor del dashboard y debe terminar en `/ws/dashboard`.
-No lo apuntes a `/ws/telemetry`: esa ruta recibe publicaciones de emisores. El
-emisor del gemelo se conecta por separado a `/ws/telemetry` con la credencial de
-servicio indicada más abajo.
+El frontend deriva `GET /api/v1/telemetry/latest` desde `VITE_AUTH_API_URL` y
+consulta el snapshot cada 2 segundos. Ninguna clave de servicio se incluye en
+variables `VITE_*` ni en JavaScript del navegador.
 
 La ruta `/api/login` es alias de `/api/v1/auth/login`. El backend toma el rol de
-PostgreSQL; el JWT se envía en el primer frame WebSocket, nunca en la URL. Para
-apuntar al backend local, sobrescribe `VITE_WS_URL`:
+PostgreSQL. Para apuntar el frontend al backend local, configura:
 
 ```env
-VITE_WS_URL=ws://127.0.0.1:8000/ws/dashboard
+VITE_AUTH_API_URL=http://127.0.0.1:8000/api/login
 ```
 
 Los orígenes web locales permitidos son `localhost:5500` y `127.0.0.1:5500`.
@@ -93,7 +90,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 pip install -r requirements-dev.txt
 pip-audit -r requirements.txt
-uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000 --ws-max-size 1048576
+uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 En el **Backend API de Render** configura `ENVIRONMENT=production`, `DATABASE_URL`,
@@ -127,12 +124,12 @@ y registra cada resultado directamente en Render, nunca en Git. Rota también la
 contraseñas demo usadas por revisiones antiguas, porque permanecen en el historial
 Git aunque ya no estén en los archivos actuales.
 
-El simulador se conecta al relay del servidor del gemelo en `/ws/telemetry` con
-la sesión web existente. `server.js` abre el WebSocket saliente a
-`wss://aegis-lock-api.onrender.com/ws/telemetry` y manda `TELEMETRY_API_KEY` en
-el header HTTP `Authorization`; configura el mismo secreto como
-`AEGIS_TELEMETRY_API_KEY` en Render para el gemelo. La clave no se incluye en
-ningún JavaScript del navegador.
+El navegador del gemelo publica por HTTP al relay autenticado de su servidor
+Node. Node envía `POST /api/v1/telemetry` al API de AEGIS con
+`Authorization: Bearer <TELEMETRY_API_KEY>`; configura el mismo secreto en el
+backend como `TELEMETRY_API_KEY` y en el Gemelo como
+`AEGIS_TELEMETRY_API_KEY`. El navegador nunca recibe esa clave. AEGIS devuelve
+ACK con `event_id` y el estado de persistencia.
 
 Los feeds se sirven desde el gemelo con una firma HMAC temporal verificada en
 Node; los archivos de `/assets/cameras` siguen protegidos y no se exponen como
@@ -145,14 +142,14 @@ El servidor FastAPI también incluye:
 - `/api/v1/analytics/history`, `/api/v1/analytics/errors` y `/api/v1/audit`, protegidas según rol; Admin ve picos, errores y auditoría.
 - `/api/v1/cameras/{camera_id}/feed-url` genera URLs HMAC temporales; el video sigue servido por el gemelo sin hacer pública la carpeta de cámaras.
 - `target_user` en un PIN es metadato de asignación/auditoría; el teclado de puerta actual identifica el PIN, no a la persona.
-- `/ws/telemetry` para emisores autenticados por JWT o por la credencial privada
-  servidor-a-servidor; normaliza y valida sobres del gemelo, evalúa umbrales de
+- `POST /api/v1/telemetry` para emisores autenticados por JWT limitado o por la
+  credencial privada servidor-a-servidor; normaliza y valida sobres del gemelo, evalúa umbrales de
   temperatura (>38 °C), pérdida efectiva (0 V), fluctuaciones fuera del rango
   normal de 110–220 V, intrusión y Lockdown, y persiste en PostgreSQL. Un valor
   válido fuera del rango genera un aviso inmediato una vez al entrar en esa
   condición; lecturas ausentes/nulas no se convierten en cero.
-- `/ws/dashboard` para retransmitir eventos a clientes autenticados y medir RTT
-  con ping/pong de aplicación.
+- `GET /api/v1/telemetry/latest` para que clientes autenticados consulten el
+  último snapshot por métrica/zona mediante polling REST.
 - `POST /api/v1/chat`, asistente Argus con herramientas limitadas y OpenRouter.
 - Desde el chat del dashboard, el perfil Administrador puede pedir explícitamente
   `envía el informe general por Telegram`. Argus envía los agregados solo al chat
@@ -193,8 +190,8 @@ El servidor FastAPI también incluye:
   por cuenta, IP y ruta. Nunca se registran contraseñas ni tokens.
 - Repeticiones de `PIN_VALIDATION_DENIED` o `LOCKOUT` por puerta; correlaciona
   con generación/revocación de PINes y quién hizo el cambio.
-- `WebSocket Authentication Failure`, rechazos por origen, desconexiones
-  reiteradas y `telemetry_validation_rejected` por fuente.
+- `telemetry_rest_validation_rejected`, `telemetry_rest_accepted` y fallos de
+  persistencia, correlacionados por fuente y `event_id`.
 - Picos de intrusión, pérdida de energía, temperatura crítica, selección
   inusual de cámaras y activación/liberación de protocolos.
 
