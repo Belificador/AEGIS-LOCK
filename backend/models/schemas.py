@@ -51,12 +51,42 @@ class CameraMetadata(StrictModel):
 class TelemetryMetadata(StrictModel):
     sensor: SafeIdentifier | None = None
     estado_actual: bool | None = None
+    zona_id: int | None = Field(default=None, ge=0, le=10_000, strict=True)
+    alcance: SafeIdentifier | None = None
+    estado: SafeIdentifier | None = None
+    escenario: SafeIdentifier | None = None
+    factor: float | None = Field(default=None, ge=0, le=1, strict=True)
+    factor_electrico: float | None = Field(default=None, ge=0, le=1, strict=True)
+    voltaje_v: float | None = Field(default=None, ge=0, le=1000, strict=True)
+    unidad: SafeLabel | None = None
+    banda: SafeIdentifier | None = None
+    hvac: SafeIdentifier | None = None
+    umbral: float | None = Field(default=None, ge=-50, le=150, strict=True)
+    desde_banda: int | None = Field(default=None, ge=-1, le=1, strict=True)
+    hacia_banda: int | None = Field(default=None, ge=-1, le=1, strict=True)
+    delta: int | None = Field(default=None, ge=-1_000_000, le=1_000_000, strict=True)
+    max: int | None = Field(default=None, ge=0, le=1_000_000, strict=True)
+    caminando: int | None = Field(default=None, ge=0, le=1_000_000, strict=True)
+    enviados: int | None = Field(default=None, ge=0, le=1_000_000, strict=True)
+    withdrawals: int | None = Field(default=None, ge=0, le=1_000_000, strict=True)
+    accion: SafeIdentifier | None = None
+    motivo: SafeIdentifier | None = None
+    intentos: int | None = Field(default=None, ge=0, le=1_000_000, strict=True)
+    intentos_restantes: int | None = Field(default=None, ge=0, le=1_000_000, strict=True)
+    segundos_bloqueo: int | None = Field(default=None, ge=0, le=86_400, strict=True)
+    tipo_codigo: SafeIdentifier | None = None
+    codigo_id: SafeIdentifier | None = None
+    snapshot_inicial: bool | None = None
+    ids: list[SafeIdentifier] | None = Field(default=None, max_length=40)
+    punto: list[float] | None = Field(default=None, min_length=3, max_length=3)
+    videoPath: SafeLabel | None = None
+    transmission: SafeIdentifier | None = None
     power_w: float | None = Field(default=None, ge=0, le=100_000_000, strict=True)
     watts: float | None = Field(default=None, ge=0, le=100_000_000, strict=True)
     power_kw: float | None = Field(default=None, ge=0, le=100_000, strict=True)
     energy_kwh: float | None = Field(default=None, ge=0, le=1_000_000_000, strict=True)
     power_estimated: bool | None = None
-    direccion: int | None = Field(default=None, ge=0, le=1, strict=True)
+    direccion: int | None = Field(default=None, ge=-1, le=1, strict=True)
     camera_id: SafeIdentifier | None = None
     cameraId: SafeIdentifier | None = None
     camera: CameraMetadata | None = None
@@ -76,6 +106,25 @@ class TelemetryMetadata(StrictModel):
     room: SafeLabel | None = None
     habitacion: SafeLabel | None = None
     nodes: list[SafeLabel] | None = Field(default=None, max_length=32)
+
+    @field_validator("punto", mode="before")
+    @classmethod
+    def validate_point(cls, value: object) -> object:
+        if value is None:
+            return value
+        if (
+            not isinstance(value, list)
+            or len(value) != 3
+            or any(
+                isinstance(component, bool)
+                or not isinstance(component, (int, float))
+                or not math.isfinite(float(component))
+                or abs(float(component)) > 100_000
+                for component in value
+            )
+        ):
+            raise ValueError("metadata.punto debe ser un vector XYZ numérico válido")
+        return value
 
     @field_validator("access_direction", mode="before")
     @classmethod

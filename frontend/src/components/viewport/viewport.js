@@ -77,7 +77,10 @@ export function mountViewport(root, { onCameraSelected } = {}) {
     const zone = event.zone || event.zona || "GLOBAL";
     root.querySelector("#signal-zone").textContent = zone;
     root.querySelector("#signal-kind").textContent = String(event.tipo_evento || "TELEMETRÍA").toUpperCase();
-    signalType.textContent = `${String(event.tipo_evento || "EVENTO").toUpperCase()} · ${zone}`;
+    const type = String(event.tipo_evento || event.event_type || "EVENTO").toLowerCase();
+    signalType.textContent = ["iluminacion", "illumination", "lighting"].includes(type)
+      ? `ILUMINACIÓN ${event.illumination_percent ?? event.valor ?? "—"} % · ${zone}`
+      : `${type.toUpperCase()} · ${zone}`;
     const date = event.timestamp ? new Date(event.timestamp) : new Date();
     timestamp.textContent = Number.isNaN(date.getTime()) ? "" : new Intl.DateTimeFormat("es", {
       hour: "2-digit", minute: "2-digit", second: "2-digit",

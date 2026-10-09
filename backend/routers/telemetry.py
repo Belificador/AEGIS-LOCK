@@ -82,16 +82,20 @@ async def telemetry_socket(websocket: WebSocket) -> None:
     try:
         await websocket.send_json({"kind": "connection", "status": "authenticated"})
         while True:
+            raw_event: dict[str, Any] | None = None
             try:
                 if claims and time.time() >= int(claims["exp"]):
                     await websocket.close(code=4401, reason="Access token expired")
                     return
                 raw_text = await asyncio.wait_for(websocket.receive_text(), timeout=5) if claims else await websocket.receive_text()
                 if rate_limiter is not None:
+                    # A global Gemelo slider fans one change out to six zones and
+                    # voltage plus illumination; allow that burst without dropping
+                    # a valid state snapshot, while retaining a bounded per-minute cap.
                     allowed = await rate_limiter.allow(
-                        f"ip:{client_ip}", "telemetry-frame-ip", limit=1200, window_seconds=60,
+                        f"ip:{client_ip}", "telemetry-frame-ip", limit=3600, window_seconds=60,
                     ) and await rate_limiter.allow(
-                        f"publisher:{publisher}", "telemetry-frame-publisher", limit=600, window_seconds=60,
+                        f"publisher:{publisher}", "telemetry-frame-publisher", limit=3600, window_seconds=60,
                     )
                     if not allowed:
                         await websocket.send_json({"kind": "error", "detail": "Rate limit exceeded"})
@@ -109,16 +113,29 @@ async def telemetry_socket(websocket: WebSocket) -> None:
                 metadata = event_data.get("metadata") if isinstance(event_data.get("metadata"), dict) else {}
                 access_target_user = metadata.pop("target_user", None)
                 event_data["metadata"] = metadata
-                persisted_event_data = copy.deepcopy(event_data)
+                persisted_event_data = _persisted_event_data(event, event_data)
             except asyncio.TimeoutError:
                 continue
             except (ValueError, ValidationError) as exc:
-                await websocket.send_json({"kind": "error", "detail": "Evento de telemetría inválido"})
-                logger.warning("telemetry_validation_rejected publisher=%s reason=%s", publisher[:80], type(exc).__name__)
+                rejected_event_id = raw_event.get("event_id") if isinstance(raw_event, dict) else None
+                error_payload = {"kind": "error", "detail": "Evento de telemetría inválido"}
+                if isinstance(rejected_event_id, str) and len(rejected_event_id) <= 80:
+                    error_payload["event_id"] = rejected_event_id
+                await websocket.send_json(error_payload)
+                logger.warning(
+                    "telemetry_validation_rejected publisher=%s event_id=%s reason=%s",
+                    publisher[:80],
+                    str(rejected_event_id or "")[:80],
+                    type(exc).__name__,
+                )
                 continue
 
             if publisher != "gemelo-service" and event.event_type != "camera_selected":
-                await websocket.send_json({"kind": "error", "detail": "Este token solo puede publicar selección de cámara"})
+                await websocket.send_json({
+                    "kind": "error",
+                    "detail": "Este token solo puede publicar selección de cámara",
+                    "event_id": event_data["event_id"],
+                })
                 logger.warning("telemetry_publish_denied publisher=%s type=%s", publisher[:80], event.event_type)
                 continue
 
@@ -262,6 +279,21 @@ def _log_notification_failure(task: asyncio.Task[None]) -> None:
     error = task.exception()
     if error is not None:
         logger.warning("argus_alert_task_failed error=%s", type(error).__name__)
+
+
+def _persisted_event_data(event: Any, event_data: dict[str, Any]) -> dict[str, Any]:
+    """Keep Gemelo actions in the event log without overwriting current occupancy."""
+    persisted = copy.deepcopy(event_data)
+    metadata = persisted.get("metadata") if isinstance(persisted.get("metadata"), dict) else {}
+    action = any(metadata.get(field) is not None for field in ("accion", "motivo", "enviados", "withdrawals"))
+    if (
+        event.event_type in {"aforo", "occupancy"}
+        and event.occupancy is None
+        and (metadata.get("estado_actual") is False or action)
+    ):
+        persisted["tipo_evento"] = "aforo_action"
+        persisted["event_type"] = "aforo_action"
+    return persisted
 
 
 async def _persist_event_background(

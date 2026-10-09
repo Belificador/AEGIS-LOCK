@@ -64,3 +64,22 @@ test("convierte cambios locales de modo en actividad natural", () => {
   assert.equal(closure.detail, "Activado por admin · CIERRE PROGRAMADO");
   assert.equal(closure.priority, "warning");
 });
+
+test("muestra el cero de iluminación y separa acciones de movimiento del aforo real", () => {
+  const lightsOff = formatActivity({
+    tipo_evento: "iluminacion",
+    valor: 0,
+    illumination_percent: 0,
+    zona: "Administración",
+  });
+  assert.equal(lightsOff.title, "Iluminación actualizada");
+  assert.equal(lightsOff.detail, "0 % luz · Administración");
+
+  const stopCommand = formatActivity({
+    tipo_evento: "aforo",
+    valor: 0,
+    metadata: { accion: "frenar" },
+  });
+  assert.equal(stopCommand.title, "Acción del modelo");
+  assert.equal(stopCommand.detail, "frenar");
+});

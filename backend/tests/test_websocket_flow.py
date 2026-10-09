@@ -40,7 +40,20 @@ def test_server_relay_ingests_validates_alerts_and_broadcasts(monkeypatch) -> No
         '"valor": 39, "timestamp": "2026-10-05T12:00:00Z", "metadata": {"sensor": "real-01"} }'
     )
 
+    class RecordingRateLimiter:
+        def __init__(self):
+            self.calls = []
+
+        async def allow(self, identity, action, *, limit, window_seconds):
+            self.calls.append((action, limit, window_seconds))
+            return True
+
+        async def close(self):
+            return None
+
+    rate_limiter = RecordingRateLimiter()
     with TestClient(app) as client:
+        client.app.state.websocket_rate_limiter = rate_limiter
         with client.websocket_connect(
             "/ws/dashboard", headers={"origin": "http://localhost:5500"}
         ) as dashboard:
@@ -66,6 +79,8 @@ def test_server_relay_ingests_validates_alerts_and_broadcasts(monkeypatch) -> No
         assert acknowledgement["persisted"] is False
         assert acknowledgement["queued_for_persistence"] is True
         assert events == []
+        assert ("telemetry-frame-ip", 3600, 60) in rate_limiter.calls
+        assert ("telemetry-frame-publisher", 3600, 60) in rate_limiter.calls
     assert events[0][0]["tipo_evento"] == "temperatura"
 
 

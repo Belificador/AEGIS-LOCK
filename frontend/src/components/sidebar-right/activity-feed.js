@@ -54,6 +54,10 @@ export function formatActivity(data, { priority, timestamp, alerts: suppliedAler
     title = "Movimiento detectado";
     detail = camera ? `Cámara ${camera}` : location ? `Zona ${location}` : "Sensor de movimiento";
     inferredPriority = "warning";
+  } else if (["iluminacion", "illumination", "lighting"].includes(type)) {
+    const percent = Number(event.illumination_percent ?? value);
+    title = "Iluminación actualizada";
+    detail = `${Number.isFinite(percent) ? `${percent.toLocaleString("es", { maximumFractionDigits: 1 })} % luz` : readableLabel(value)}${location ? ` · ${location}` : ""}`;
   } else if (type === "camera_selected") {
     title = "Cámara seleccionada";
     detail = camera ? `Cámara ${camera}${location ? ` · ${location}` : ""}` : location || "Vista de cámara actualizada";
@@ -74,10 +78,16 @@ export function formatActivity(data, { priority, timestamp, alerts: suppliedAler
     const reading = voltage == null ? "No se recibió valor numérico" : `${voltage.toLocaleString("es", { maximumFractionDigits: 1 })} V`;
     detail = `${reading}${location ? ` · ${location}` : ""}`;
     inferredPriority = voltage === 0 ? "critical" : fluctuating ? "warning" : "system";
-  } else if (["aforo", "occupancy"].includes(type) || event.occupancy != null) {
-    const occupancy = event.occupancy ?? value;
-    title = "Aforo actualizado";
-    detail = `${readableLabel(occupancy)} personas${location ? ` · ${location}` : ""}`;
+  } else if (["aforo", "occupancy", "aforo_action"].includes(type) || event.occupancy != null) {
+    const action = metadata.accion || metadata.motivo;
+    if (action) {
+      title = "Acción del modelo";
+      detail = `${readableLabel(action)}${location ? ` · ${location}` : ""}`;
+    } else {
+      const occupancy = event.occupancy ?? value;
+      title = "Aforo actualizado";
+      detail = `${readableLabel(occupancy)} personas${location ? ` · ${location}` : ""}`;
+    }
   } else if (type === "energy" || event.energy_kwh != null) {
     title = "Consumo actualizado";
     detail = `${readableLabel(event.energy_kwh ?? value)} kWh${location ? ` · ${location}` : ""}`;

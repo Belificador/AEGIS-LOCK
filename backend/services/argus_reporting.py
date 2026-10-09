@@ -350,12 +350,26 @@ def _safe_zone(value: Any) -> str:
 def _activity_label(event_type: str, value: Any, event: dict[str, Any]) -> str:
     kind = event_type.lower()
     result = str(value or "").upper()
+    if kind == "aforo_action":
+        metadata = event.get("metadata") if isinstance(event.get("metadata"), dict) else {}
+        action = metadata.get("accion") or metadata.get("motivo")
+        return f"Acción del modelo · {action}" if isinstance(action, str) else "Acción de aforo registrada"
     if kind in {"acceso_pin", "access_pin"}:
         return "Acceso autorizado" if result == "GRANTED" else "Acceso denegado" if result in {"DENIED", "LOCKOUT"} else "Evento de PIN"
     if kind in {"temperatura", "temperature"}:
         return "Temperatura registrada"
     if kind in {"voltaje", "voltage"}:
         return "Corte de energía" if event.get("voltage_v") == 0 else "Voltaje registrado"
+    if kind in {"iluminacion", "illumination", "lighting"}:
+        metadata = event.get("metadata") if isinstance(event.get("metadata"), dict) else {}
+        value = event.get("valor")
+        if value is None and metadata.get("factor_electrico") is not None:
+            value = float(metadata["factor_electrico"]) * 100
+        try:
+            percentage = float(value)
+        except (TypeError, ValueError):
+            return "Iluminación actualizada"
+        return f"Iluminación actualizada: {percentage:g} %" if 0 <= percentage <= 100 else "Iluminación actualizada"
     if kind in {"aforo", "occupancy"}:
         return "Aforo actualizado"
     if kind == "camera_selected":

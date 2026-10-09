@@ -61,7 +61,7 @@ def parse_telemetry(raw: dict[str, Any]) -> tuple[TelemetryEvent, dict[str, Any]
             normalized["power_kw"] = power_w / 1000
         elif power_kw is not None:
             normalized["power_kw"] = power_kw
-    elif event_type in _OCCUPANCY_TYPES:
+    elif event_type in _OCCUPANCY_TYPES and _is_current_occupancy(metadata):
         occupancy = _numeric_value(
             value if value is not None else envelope.occupancy,
             "count", "personas", "lectura", "value", "valor",
@@ -98,6 +98,14 @@ def parse_telemetry(raw: dict[str, Any]) -> tuple[TelemetryEvent, dict[str, Any]
     if envelope.camera_id is not None:
         event_data["camera_id"] = envelope.camera_id
     return event, event_data
+
+
+def _is_current_occupancy(metadata: dict[str, Any]) -> bool:
+    """Distinguish the current count from Gemelo's action events also typed aforo."""
+    state_marker = metadata.get("estado_actual")
+    if state_marker is not None:
+        return state_marker is True
+    return not any(metadata.get(field) is not None for field in ("accion", "motivo", "enviados", "withdrawals"))
 
 
 def _numeric_value(value: Any, *keys: str) -> float:

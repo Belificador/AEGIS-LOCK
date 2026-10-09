@@ -1,7 +1,8 @@
 import { parseVoltageReading } from "./voltage-reading.js";
 import { resolveDashboardWebSocketUrl } from "./dashboard-websocket-url.js";
 
-const WS_URL = import.meta.env.VITE_WS_URL;
+const VITE_ENV = import.meta.env || {};
+const WS_URL = VITE_ENV.VITE_WS_URL;
 const RECONNECT_DELAY_MS = 5000;
 
 export class DataReceiver {
@@ -16,7 +17,7 @@ export class DataReceiver {
     this.pingSequence = 0;
     this.stopped = true;
     this.session = null;
-    this.url = resolveDashboardWebSocketUrl(url || WS_URL, import.meta.env.VITE_AUTH_API_URL);
+    this.url = resolveDashboardWebSocketUrl(url || WS_URL, VITE_ENV.VITE_AUTH_API_URL);
   }
 
   start(session) {
@@ -172,7 +173,18 @@ export function normalizeTelemetry(input = {}) {
   const metadata = input.metadata && typeof input.metadata === "object" ? input.metadata : {};
 
   if (type === "temperatura" || type === "temperature") event.temperature_c = Number(value);
-  if (type === "aforo" || type === "occupancy") event.occupancy = Number(value);
+  if (type === "aforo" || type === "occupancy") {
+    const actionEvent = metadata.estado_actual === false
+      || ["accion", "motivo", "enviados", "withdrawals"].some((field) => metadata[field] != null);
+    if (actionEvent) delete event.occupancy;
+    else event.occupancy = Number(value);
+  }
+  if (["iluminacion", "illumination", "lighting"].includes(type)) {
+    const percent = Number(value);
+    const factorPercent = Number(metadata.factor_electrico) * 100;
+    if (value !== "" && Number.isFinite(percent)) event.illumination_percent = percent;
+    else if (Number.isFinite(factorPercent)) event.illumination_percent = factorPercent;
+  }
   if (type === "voltaje" || type === "voltage") {
     const objectValue = input.valor && typeof input.valor === "object" ? input.valor : {};
     const voltage = objectValue.voltage_v ?? objectValue.voltage ?? objectValue.v ?? input.voltage_v ?? value;
