@@ -1,21 +1,20 @@
 """Admin PIN management and the authenticated gemelo validation endpoint."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 import hmac
 import logging
-import secrets
 from typing import Annotated, Any
-from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from backend.config import get_settings
 from backend.core.dependencies import require_admin
-from backend.core.pin_security import decrypt_pin, encrypt_pin, hash_pin
+from backend.core.pin_security import decrypt_pin, hash_pin
 from backend.core.rate_limit import limiter
 from backend.models.schemas import PinGenerateRequest, PinGenerateResponse, PinValidationRequest
 from backend.services.door_catalog import DOORS, canonical_door
 from backend.services.postgres_client import postgres_service
+from backend.services.temporary_pins import generate_temporary_pin
 
 router = APIRouter(prefix="/pins", tags=["temporary pins"])
 _logger = logging.getLogger(__name__)
@@ -33,49 +32,7 @@ async def generate_pin(
     request: Request,
     claims: Annotated[dict[str, Any], Depends(require_admin)],
 ) -> PinGenerateResponse:
-    if postgres_service.pool is None:
-        raise HTTPException(status_code=503, detail="PostgreSQL no está disponible")
-    door = canonical_door(payload.door_name)
-    if door is None:
-        raise HTTPException(status_code=422, detail="La puerta no pertenece al catálogo del gemelo")
-
-    settings = get_settings()
-    pin_code = ""
-    pin_digest = ""
-    for _ in range(100):
-        pin_code = str(secrets.randbelow(10**settings.pin_code_length)).zfill(settings.pin_code_length)
-        pin_digest = hash_pin(str(door["door_name"]), pin_code)
-        if not await postgres_service.temporary_pin_hash_exists(str(door["door_name"]), pin_digest):
-            break
-    else:
-        raise HTTPException(status_code=503, detail="No se pudo generar un PIN disponible")
-
-    pin_id = str(uuid4())
-    expires_at = datetime.now(timezone.utc) + timedelta(hours=payload.duration_hours)
-    created_by = str(claims["sub"])
-    stored = await postgres_service.create_temporary_pin(
-        pin_id=pin_id,
-        door_name=str(door["door_name"]),
-        pin_code=encrypt_pin(str(door["door_name"]), pin_code),
-        pin_hash=pin_digest,
-        target_user=payload.target_user,
-        created_by=created_by,
-        expires_at=expires_at,
-    )
-    await postgres_service.write_audit_log(
-        action="PIN_GENERATED",
-        performed_by=created_by,
-        details={"pin_id": pin_id, "door_name": stored["door_name"], "target_user": payload.target_user},
-    )
-    return PinGenerateResponse(
-        id=stored["id"],
-        door_name=stored["door_name"],
-        pin_code=pin_code,
-        target_user=stored["target_user"],
-        created_by=stored["created_by"],
-        expires_at=stored["expires_at"],
-        is_active=stored["is_active"],
-    )
+    return await generate_temporary_pin(payload, created_by=str(claims["sub"]))
 
 
 @router.get("")

@@ -46,7 +46,7 @@ export function mountDashboard({ user, session, onLogout, wsUrl }) {
       }
     },
   });
-  const sidebarLeft = mountSidebarLeft(document.querySelector("#sidebar-left-root"), getAssistantContext);
+  const sidebarLeft = mountSidebarLeft(document.querySelector("#sidebar-left-root"), { session });
   const viewport = mountViewport(document.querySelector("#viewport-root"), { onCameraSelected: openCamera });
   const right = mountSidebarRight(document.querySelector("#sidebar-right-root"), {
     role: user.role,
@@ -225,15 +225,6 @@ export function mountDashboard({ user, session, onLogout, wsUrl }) {
       patchState({ recentAlerts: [...state.recentAlerts.slice(-9), "Apagón eléctrico detectado"] });
       if (state.mode === "NORMAL") setMode("ALERTA", "APAGÓN ELÉCTRICO");
     }
-  }
-
-  function getAssistantContext() {
-    return {
-      modelConnected: state.modelConnected,
-      mode: state.mode,
-      telemetry: state.telemetry,
-      recentAlerts: state.recentAlerts,
-    };
   }
 
   function destroy() {

@@ -37,7 +37,7 @@ def test_payload_rejects_unknown_fields_and_cors_rejects_wildcards() -> None:
     with pytest.raises(ValidationError):
         Settings(allowed_origins=["https://untrusted.example"])
     with pytest.raises(ValidationError):
-        Settings(local_ai_url="https://untrusted.example/v1")
+        Settings(openrouter_base_url="http://untrusted.example/v1")
 
 
 def test_login_role_is_derived_from_account_not_request_payload() -> None:

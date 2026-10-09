@@ -12,10 +12,10 @@ backend/
   config.py               Configuración pydantic-settings
   core/                   JWT, rate limiting, dependencias y middleware
   models/schemas.py       Validación de eventos
-  routers/                Auth, telemetría, WebSocket y chat local
-  services/               PostgreSQL, reglas y adaptador de IA local
+  routers/                Auth, telemetría, WebSocket, Argus y Hermes
+  services/               PostgreSQL, reglas, Argus y Telegram
   sql/                    Esquema PostgreSQL aplicado al iniciar
-  tests/                  Reglas, JWT y flujo WebSocket
+  tests/                  Reglas, JWT, Argus, Hermes y telemetría
 frontend/
   index.html              Intro, login, dashboard y modales
   styles/main.css         Entrada CSS con imports por panel
@@ -124,8 +124,12 @@ El servidor FastAPI también incluye:
   temperatura (>38 °C), 0 V, intrusión y Lockdown, y persiste en PostgreSQL.
 - `/ws/dashboard` para retransmitir eventos a clientes autenticados y medir RTT
   con ping/pong de aplicación.
-- `POST /api/v1/chat`, listo para un modelo local OpenAI-compatible al definir
-  `LOCAL_AI_URL` y `LOCAL_AI_MODEL`.
+- `POST /api/v1/chat`, Argus con OpenRouter y herramientas acotadas por rol.
+- `POST /api/v1/telegram/webhook`, Hermes para consultas privadas de usuarios
+  permitidos por `TELEGRAM_USER_MAP`; usa Argus en modo de solo lectura.
+- `python -m backend.jobs.daily_argus_report` genera el reporte agregado del día
+  anterior; GitHub Actions lo ejecuta diariamente a las 08:00 UTC. Un Administrador
+  también puede pedir desde Argus que el informe llegue a su Telegram privado vinculado.
 
 ## Funciones del prototipo
 
@@ -141,8 +145,9 @@ El servidor FastAPI también incluye:
   PostgreSQL.
 - **Diagnóstico Admin:** incluye picos de temperatura y potencia/energía
   estimada, desconexiones/403 de la caja negra y gestión de PINes temporales.
-- **Chat:** no informa lecturas mientras el modelo está desconectado. No cambia
-  claves, puertas ni luces; la IA local aún no está conectada.
+- **Argus y Hermes:** Argus consulta estado, actividad, métricas y cámaras con
+  herramientas autorizadas. Solo Administrador puede solicitar un PIN temporal
+  o enviar el informe a su Telegram privado vinculado; Hermes no ejecuta acciones.
 - **Lockdown, evacuación y cierre de jornada:** actualizan un estado simulado
   persistente en el navegador. El cierre puede programarse por hora y solo el
   perfil Administrador puede liberar el estado. No envía comandos físicos ni
@@ -154,3 +159,11 @@ El servidor FastAPI también incluye:
 .venv/bin/pytest backend/tests -q
 cd frontend && npm test && npm run build
 ```
+
+Para habilitar Argus configura `OPENROUTER_API_KEY` como secreto del backend.
+Hermes requiere además `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET` y
+`TELEGRAM_USER_MAP` (`telegram_id:usuario_aegis`, separados por coma). Registra
+con la API Bot de Telegram el webhook `https://<api-aegis>/api/v1/telegram/webhook`
+y el mismo valor como `secret_token`. El reporte diario de GitHub Actions usa los secretos
+`ARGUS_REPORT_DATABASE_URL` (conexión de solo lectura), `OPENROUTER_API_KEY`,
+`TELEGRAM_BOT_TOKEN` y `TELEGRAM_CHAT_ID`.
