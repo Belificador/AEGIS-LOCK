@@ -1,3 +1,5 @@
+import { classifyPowerLossTransition } from "./power-loss-transition.js";
+
 export function mountViewport(root, { onCameraSelected } = {}) {
   root.innerHTML = `
     <section class="viewport-panel" aria-labelledby="twin-title">
@@ -24,6 +26,10 @@ export function mountViewport(root, { onCameraSelected } = {}) {
         </div>
         <div id="emergency-mode-overlay" class="emergency-mode-overlay" hidden role="status" aria-live="assertive"><strong id="emergency-mode-title"></strong><span>AEGIS LOCK · PROTOCOLO ACTIVO</span></div>
         <div id="signal-hud" class="signal-hud" hidden><span id="signal-type"></span><time id="signal-timestamp"></time></div>
+        <div id="power-loss-notice" class="power-loss-notice" hidden role="alert" aria-live="assertive" aria-atomic="true">
+          <span class="power-loss-notice-icon" aria-hidden="true">ϟ</span>
+          <span class="power-loss-notice-copy"><strong>PÉRDIDA DE ALIMENTACIÓN · 0 V</strong><span data-power-loss-zone></span></span>
+        </div>
       </div>
       <footer class="viewport-foot"><span id="signal-footer"><i class="status-led led-offline"></i> DESCONECTADO DE RENDER</span><span>ARRASTRA PARA ROTAR · RUEDA PARA ZOOM</span></footer>
     </section>
@@ -39,8 +45,13 @@ export function mountViewport(root, { onCameraSelected } = {}) {
   const timestamp = root.querySelector("#signal-timestamp");
   const emergencyOverlay = root.querySelector("#emergency-mode-overlay");
   const emergencyTitle = root.querySelector("#emergency-mode-title");
+  const powerLossNotice = root.querySelector("#power-loss-notice");
+  const powerLossZone = powerLossNotice.querySelector("[data-power-loss-zone]");
   let visor = null;
   let destroyed = false;
+  let powerLossTimer = null;
+  const activePowerLosses = new Set();
+  const lastVoltageBySourceZone = new Map();
   const pendingEvents = [];
   import("../../visor3D.js").then(({ Visor3D }) => {
     if (destroyed) return;
@@ -82,7 +93,40 @@ export function mountViewport(root, { onCameraSelected } = {}) {
     timestamp.textContent = Number.isNaN(date.getTime()) ? "" : new Intl.DateTimeFormat("es", {
       hour: "2-digit", minute: "2-digit", second: "2-digit",
     }).format(date);
+    updatePowerLossNotice(event);
+  }
 
+  function updatePowerLossNotice(event) {
+    const type = String(event.tipo_evento || event.event_type || "").toLowerCase();
+    const valueObject = event.valor && typeof event.valor === "object" ? event.valor : {};
+    const rawVoltage = event.voltage_v
+      ?? valueObject.voltage_v
+      ?? valueObject.voltage
+      ?? valueObject.v
+      ?? (["voltaje", "voltage"].includes(type) ? valueObject.valor ?? event.valor : null);
+    if (rawVoltage == null || rawVoltage === "" || typeof rawVoltage === "boolean") return;
+    const voltage = Number(rawVoltage);
+    if (!Number.isFinite(voltage)) return;
+
+    const source = String(event.source_id || event.origen || "aegis");
+    const zone = String(event.zone || event.zona || "GLOBAL");
+    const key = `${source}:${zone}`;
+    const previousVoltage = lastVoltageBySourceZone.get(key);
+    const transition = classifyPowerLossTransition(previousVoltage, voltage);
+    lastVoltageBySourceZone.set(key, voltage);
+    if (transition === "loss") {
+      if (activePowerLosses.has(key)) return;
+      activePowerLosses.add(key);
+      powerLossZone.textContent = `ZONA AFECTADA · ${zone}`;
+      powerLossNotice.hidden = false;
+      window.clearTimeout(powerLossTimer);
+      powerLossTimer = window.setTimeout(() => {
+        powerLossNotice.hidden = true;
+        powerLossTimer = null;
+      }, 5000);
+    } else if (transition === "restored") {
+      activePowerLosses.delete(key);
+    }
   }
 
   function setIntrusionAlert(zone) {
@@ -124,6 +168,10 @@ export function mountViewport(root, { onCameraSelected } = {}) {
     destroy() {
       destroyed = true;
       clearIntrusionAlert();
+      window.clearTimeout(powerLossTimer);
+      powerLossTimer = null;
+      activePowerLosses.clear();
+      lastVoltageBySourceZone.clear();
       visor?.destroy();
     },
   };

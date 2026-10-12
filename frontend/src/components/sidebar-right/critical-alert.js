@@ -49,7 +49,7 @@ export function mountCriticalAlert({ onAcknowledge } = {}) {
     const value = String(event.valor ?? "").toUpperCase();
     const deniedAccess = type === "acceso_pin" && ["DENIED", "LOCKOUT"].includes(value);
     const candidates = alerts
-      .filter((alert) => alert.severity === "critical" || alert.severity === "lockdown")
+      .filter((alert) => (alert.severity === "critical" || alert.severity === "lockdown") && alert.code !== "POWER_LOSS")
       .map((alert) => ({
         code: alert.code || "CRITICAL",
         message: alert.message || "Incidente crítico",
@@ -65,10 +65,6 @@ export function mountCriticalAlert({ onAcknowledge } = {}) {
     if (Number(event.temperature_c) > 38 && !candidates.some((candidate) => candidate.code === "HIGH_TEMPERATURE")) {
       candidates.push({ code: "HIGH_TEMPERATURE", message: `Temperatura crítica: ${event.temperature_c} °C` });
     }
-    if (Number(event.voltage_v) === 0 && !candidates.some((candidate) => candidate.code === "POWER_LOSS")) {
-      candidates.push({ code: "POWER_LOSS", message: "Se detectó una lectura de 0 V" });
-    }
-
     const source = String(event.source_id || event.origen || "aegis");
     const zone = String(event.zone || event.zona || "GLOBAL");
     for (const candidate of candidates) {

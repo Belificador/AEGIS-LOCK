@@ -1,3 +1,4 @@
+import { mountLoginDigitalRain } from "./login-digital-rain.js";
 const SESSION_KEY = "aegis.prototype.session.v2";
 const DEFAULT_AUTH_ENDPOINT = "https://aegis-lock-api.onrender.com/api/login";
 const DEMO_AUTH = import.meta.env.DEV && import.meta.env.VITE_DEMO_AUTH === "true";
@@ -16,6 +17,7 @@ export function initializeAuth({ onAuthenticated }) {
   const button = document.querySelector("#login-submit");
   const video = document.querySelector("#intro-video");
   const modeLabel = document.querySelector("#auth-mode-label");
+  const digitalRain = mountLoginDigitalRain(document.querySelector("#login-digital-rain"));
   if (AUTH_ENDPOINT) {
     modeLabel.innerHTML = '<span class="status-led led-normal"></span> AUTENTICACIÓN REST CONFIGURADA';
     document.querySelector("#demo-account-hint").hidden = true;
@@ -38,6 +40,8 @@ export function initializeAuth({ onAuthenticated }) {
 
   function revealLogin({ immediate = false } = {}) {
     if (!formPanel.hidden) return;
+    loginView.classList.add("is-login-active");
+    digitalRain.setActive(true);
     if (immediate) {
       formPanel.classList.add("is-instant");
       formPanel.hidden = false;
@@ -55,6 +59,8 @@ export function initializeAuth({ onAuthenticated }) {
   }
 
   document.querySelector("#login-back").addEventListener("click", () => {
+    loginView.classList.remove("is-login-active");
+    digitalRain.setActive(false);
     formPanel.hidden = true;
     formPanel.classList.remove("is-instant");
     intro.hidden = false;
@@ -74,6 +80,8 @@ export function initializeAuth({ onAuthenticated }) {
       const session = AUTH_ENDPOINT
         ? await authenticateRemote(fields)
         : await authenticatePrototype(fields);
+      loginView.classList.remove("is-login-active");
+      digitalRain.setActive(false);
       saveSession(session);
       onAuthenticated(session.user, session);
     } catch (caught) {
@@ -104,6 +112,8 @@ export function initializeAuth({ onAuthenticated }) {
     window.clearTimeout(refreshTimer);
     refreshTimer = null;
     activeSession = null;
+    loginView.classList.remove("is-login-active");
+    digitalRain.setActive(false);
     sessionStorage.removeItem(SESSION_KEY);
     formPanel.hidden = true;
     formPanel.classList.remove("is-instant");

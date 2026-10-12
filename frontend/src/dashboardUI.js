@@ -201,7 +201,7 @@ export function mountDashboard({ user, session, onLogout, wsUrl }) {
     right.events.append(event, { alerts, timestamp: event.timestamp });
     for (const alert of alerts) {
       patchState({ recentAlerts: [...state.recentAlerts.slice(-9), alert.message] });
-      if (state.mode === "NORMAL") setMode("ALERTA", alert.code);
+      if (alert.code !== "POWER_LOSS" && state.mode === "NORMAL") setMode("ALERTA", alert.code);
     }
 
     const deniedPin = String(event.tipo_evento).toLowerCase() === "acceso_pin" && String(event.valor).toUpperCase() === "DENIED";
@@ -223,7 +223,6 @@ export function mountDashboard({ user, session, onLogout, wsUrl }) {
     }
     if (event.voltage_v != null && currentVoltage === 0) {
       patchState({ recentAlerts: [...state.recentAlerts.slice(-9), "Apagón eléctrico detectado"] });
-      if (state.mode === "NORMAL") setMode("ALERTA", "APAGÓN ELÉCTRICO");
     }
   }
 

@@ -140,14 +140,16 @@ El servidor FastAPI también incluye:
 - **Visor:** carga `models_3d/oficina/edificio.glb`, destaca zonas al recibir
   eventos y permite seleccionar marcadores 3D de las nueve cámaras del gemelo.
   Sus posiciones se mantienen en una tabla ajustable por zona/navgrid.
-- **Alarma:** PIN denegado, intrusión, 0 V y temperatura crítica muestran un
-  overlay rojo con sonido. El acuse detiene la alarma y registra al operador en
-  PostgreSQL.
+- **Alarmas:** PIN denegado, intrusión y temperatura crítica conservan el aviso
+  crítico con sonido. Power Loss muestra un toast silencioso de 5 segundos sobre
+  el simulador y no cambia el modo de seguridad.
 - **Diagnóstico Admin:** incluye picos de temperatura y potencia/energía
   estimada, desconexiones/403 de la caja negra y gestión de PINes temporales.
 - **Argus y Hermes:** Argus consulta estado, actividad, métricas y cámaras con
   herramientas autorizadas. Solo Administrador puede solicitar un PIN temporal
   o enviar el informe a su Telegram privado vinculado; Hermes no ejecuta acciones.
+  Hermes avisa a los Administradores autorizados al detectar Power Loss y cuando
+  se restablece la alimentación.
 - **Lockdown, evacuación y cierre de jornada:** actualizan un estado simulado
   persistente en el navegador. El cierre puede programarse por hora y solo el
   perfil Administrador puede liberar el estado. No envía comandos físicos ni
