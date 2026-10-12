@@ -469,24 +469,6 @@ class PostgresService:
             for row in rows
         ]
 
-    async def latest_voltage_state(self, source_id: str, zone: str) -> float | None:
-        if self.pool is None:
-            return None
-        value = await self.pool.fetchval(
-            """
-            SELECT event->>'voltage_v'
-            FROM latest_telemetry
-            WHERE source_id = $1 AND zone = $2
-              AND jsonb_typeof(event->'voltage_v') = 'number'
-            ORDER BY updated_at DESC
-            LIMIT 1
-            """,
-            source_id,
-            zone,
-        )
-        return _finite_number(value)
-
-
 postgres_service = PostgresService()
 
 

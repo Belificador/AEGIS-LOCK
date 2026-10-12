@@ -148,8 +148,6 @@ El servidor FastAPI también incluye:
 - **Argus y Hermes:** Argus consulta estado, actividad, métricas y cámaras con
   herramientas autorizadas. Solo Administrador puede solicitar un PIN temporal
   o enviar el informe a su Telegram privado vinculado; Hermes no ejecuta acciones.
-  Hermes avisa a los Administradores autorizados al detectar Power Loss y cuando
-  se restablece la alimentación.
 - **Lockdown, evacuación y cierre de jornada:** actualizan un estado simulado
   persistente en el navegador. El cierre puede programarse por hora y solo el
   perfil Administrador puede liberar el estado. No envía comandos físicos ni

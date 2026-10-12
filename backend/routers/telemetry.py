@@ -16,7 +16,6 @@ from backend.services.postgres_client import postgres_service
 from backend.services.rules_engine import evaluate_event
 from backend.services.telemetry_ingest import parse_telemetry
 from backend.services.camera_catalog import signed_camera_url
-from backend.services.argus_notifications import classify_power_loss_transition, notify_power_loss_transition
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["telemetry"])
@@ -104,14 +103,6 @@ async def telemetry_socket(websocket: WebSocket) -> None:
                     )
 
             alerts = evaluate_event(event)
-            power_transition = None
-            power_zone = str(event_data.get("zona") or event_data.get("zone") or "GLOBAL")
-            if event.voltage_v is not None and postgres_service.pool is not None:
-                try:
-                    previous_voltage = await postgres_service.latest_voltage_state(event.source_id, power_zone)
-                    power_transition = classify_power_loss_transition(previous_voltage, event.voltage_v)
-                except Exception as exc:
-                    logger.warning("power_loss_transition_lookup_failed error=%s", type(exc).__name__)
             if event.event_type in {"acceso_pin", "access_pin"}:
                 access_value = str(raw_event.get("valor") or "").strip().upper()
                 if access_value in {"GRANTED", "DENIED", "LOCKOUT"}:
@@ -131,18 +122,6 @@ async def telemetry_socket(websocket: WebSocket) -> None:
                 persisted = postgres_service.pool is not None
                 if persisted_event_data.get("energy_kwh") is not None:
                     event_data["energy_kwh"] = persisted_event_data["energy_kwh"]
-                if persisted and power_transition:
-                    notification = asyncio.create_task(
-                        notify_power_loss_transition(
-                            transition=power_transition,
-                            source_id=str(event.source_id),
-                            zone=power_zone,
-                            voltage=float(event.voltage_v),
-                            timestamp=str(event_data.get("timestamp") or "hora no disponible"),
-                        ),
-                        name=f"hermes-power-loss-{power_transition}-{event.event_id}",
-                    )
-                    notification.add_done_callback(_log_notification_failure)
             except Exception:
                 logger.exception("No se pudo persistir evento de telemetría")
 
@@ -177,11 +156,3 @@ async def telemetry_socket(websocket: WebSocket) -> None:
             await websocket.close(code=1011)
         except Exception:
             pass
-
-
-def _log_notification_failure(task: asyncio.Task[None]) -> None:
-    if task.cancelled():
-        return
-    error = task.exception()
-    if error is not None:
-        logger.warning("hermes_power_loss_task_failed error=%s", type(error).__name__)
