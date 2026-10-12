@@ -8,6 +8,7 @@ from slowapi import Limiter
 from backend.core.dependencies import require_operator
 from backend.core.rate_limit import limiter
 from backend.models.schemas import AuditActionRequest
+from backend.services.argus_notifications import schedule_mode_transition
 from backend.services.postgres_client import postgres_service
 
 router = APIRouter(prefix="/audit", tags=["audit"])
@@ -30,4 +31,5 @@ async def record_action(
         performed_by=str(claims["sub"]),
         details=payload.details,
     )
+    schedule_mode_transition(payload.action.value, str(claims["sub"]), payload.details, row_id)
     return {"ok": True, "id": row_id}

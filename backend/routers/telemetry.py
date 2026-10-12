@@ -16,6 +16,7 @@ from backend.services.postgres_client import postgres_service
 from backend.services.rules_engine import evaluate_event
 from backend.services.telemetry_ingest import parse_telemetry
 from backend.services.camera_catalog import signed_camera_url
+from backend.services.argus_notifications import schedule_telemetry_notices
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["telemetry"])
@@ -122,6 +123,8 @@ async def telemetry_socket(websocket: WebSocket) -> None:
                 persisted = postgres_service.pool is not None
                 if persisted_event_data.get("energy_kwh") is not None:
                     event_data["energy_kwh"] = persisted_event_data["energy_kwh"]
+                if persisted:
+                    schedule_telemetry_notices(event_data, alerts)
             except Exception:
                 logger.exception("No se pudo persistir evento de telemetría")
 

@@ -17,6 +17,7 @@ from backend.config import get_settings
 from backend.core.middleware import SecurityHeadersAndSizeLimitMiddleware
 from backend.core.rate_limit import limiter
 from backend.routers import ai_chat, analytics, audit, auth, cameras, internal, pins, telemetry, telegram, ws_manager
+from backend.services.argus_notifications import seed_power_voltage_state
 from backend.services.postgres_client import postgres_service
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -32,6 +33,10 @@ async def lifespan(app: FastAPI):
         operator_password=settings.demo_operator_password,
         admin_password=settings.demo_admin_password,
     )
+    try:
+        seed_power_voltage_state(await postgres_service.latest_events())
+    except Exception as exc:
+        logging.getLogger(__name__).warning("power_loss_state_seed_failed error=%s", type(exc).__name__)
     try:
         yield
     finally:
