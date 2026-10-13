@@ -1,0 +1,387 @@
+AEGIS LOCK — DOCUMENTACIÓN TÉCNICA Y GUÍA DEL PROYECTO
+======================================================
+
+Versión de referencia: rama main, octubre de 2026.
+Propósito: explicar el prototipo, sus componentes, las incidencias importantes,
+la latencia del indicador del dashboard y los pasos para una futura integración
+con una oficina real.
+
+IMPORTANTE
+----------
+AEGIS LOCK es actualmente un prototipo de monitoreo conectado a un gemelo
+digital. El dashboard puede representar estados como Lockdown y Evacuación, pero
+esos estados no prueban que una cerradura, alarma u otro actuador físico haya
+cambiado. No es un reemplazo de un sistema certificado de control de acceso,
+alarma contra incendios, evacuación o seguridad física.
+
+
+1. ¿QUÉ ES AEGIS LOCK?
+---------------------
+AEGIS LOCK reúne en un dashboard las señales recibidas del gemelo digital:
+temperatura, voltaje, energía, aforo, actividad, alertas y cámaras catalogadas.
+Su objetivo actual es visualizar, registrar y resumir información; el sistema
+no inventa telemetría que no haya recibido.
+
+El perfil Administrador puede abrir Argus y las funciones administrativas.
+El perfil Operador es una vista de demostración de solo lectura: permite entrar
+al dashboard, consultar señales y abrir cámaras, pero no usar Argus ni ejecutar
+acciones de escritura. Los permisos reales se verifican en el backend con el
+JWT; ocultar o deshabilitar un botón en el navegador no es por sí solo una
+medida de seguridad.
+
+
+2. COMPONENTES Y RECORRIDO DE LOS DATOS
+---------------------------------------
+
+  Sensores / simulador / gemelo digital
+                    |
+                    | WebSocket seguro /ws/telemetry
+                    v
+  API AEGIS (FastAPI)
+    1. autentica al emisor
+    2. normaliza y valida el evento
+    3. ejecuta reglas deterministas
+    4. persiste el evento en PostgreSQL
+    5. retransmite evento y alertas a los dashboards
+                    |
+                    | WebSocket /ws/dashboard
+                    v
+  Dashboard en navegador
+    métricas + bitácora + alertas + visor 3D + cámaras
+
+PostgreSQL también conserva usuarios, sesiones de refresco, eventos,
+instantáneas, auditoría, errores y PINes temporales. La API crea el pool de
+conexiones y aplica los archivos SQL de backend/sql/ al iniciar.
+
+El gemelo digital y su relay multimedia son servicios externos a este código.
+La configuración actual apunta a un servicio en Render. El relay entrega feeds
+de cámara mediante URLs con firma HMAC temporal; no se debe publicar la carpeta
+de videos ni poner claves de servidor dentro del JavaScript del navegador.
+
+Los avisos críticos de Hermes se programan como tareas asíncronas después de
+persistir la telemetría, de modo que el envío a Telegram no retenga el ACK del
+emisor. Hoy no hay cola duradera: una tarea en vuelo puede perderse si el
+proceso se reinicia. Si el negocio requiere entrega garantizada, debe diseñarse
+una cola/outbox persistente y una política de reintentos antes de producción.
+
+
+3. TECNOLOGÍAS, LENGUAJES E INTELIGENCIA ARTIFICIAL
+--------------------------------------------------
+
+Interfaz:
+  - HTML para la página, formularios, diálogos y estructura del dashboard.
+  - CSS para el diseño, estados visuales y adaptación a distintos anchos.
+  - JavaScript moderno (módulos ES) para autenticación, WebSockets, componentes,
+    métricas, cámaras y ciclo de vida de la interfaz.
+  - Vite para desarrollo, pruebas/build del frontend.
+  - Three.js para renderizar el modelo 3D GLB y los marcadores de cámara.
+
+Backend:
+  - Python y FastAPI para la API REST, WebSockets, autenticación y servicios.
+  - Pydantic para validar y normalizar las solicitudes y eventos.
+  - asyncpg para conexiones asíncronas a PostgreSQL.
+  - PostgreSQL y SQL para eventos, usuarios, auditoría, métricas y PINes.
+  - pytest para pruebas del backend.
+
+Servicios externos:
+  - Render aloja los servicios configurados para API, base de datos y frontend.
+  - OpenRouter conecta Argus con un modelo remoto. El modelo predeterminado en
+    backend/config.py es nvidia/nemotron-3-ultra-550b-a55b; OPENROUTER_MODEL
+    permite cambiarlo. El procesamiento del LLM no corre localmente en AEGIS.
+  - Telegram Bot API es el canal de Hermes para consultas privadas e informes.
+  - El gemelo digital y su servicio de feeds son una integración externa; su
+    implementación completa no está dentro de este repositorio.
+
+Argus es la interfaz de lenguaje natural. Usa herramientas permitidas por el
+backend para consultar estado, actividad, métricas y cámaras; las funciones que
+escriben tienen autorización y condiciones adicionales. El rol que Argus recibe
+se deriva de claims JWT verificados y se incluye en el contexto de sistema; un
+texto como «soy Administrador» no cambia el rol ni concede permisos.
+
+Hermes es la integración con Telegram. Puede llevar consultas permitidas a
+Argus y enviar notificaciones e informes al chat privado autorizado. El mapa
+TELEGRAM_USER_MAP vincula IDs privados de Telegram con usuarios AEGIS.
+
+Las alertas básicas no dependen de la IA: backend/services/rules_engine.py
+aplica reglas deterministas. La IA redacta respuestas y narrativas a partir de
+hechos disponibles; no sustituye a esas reglas ni a la validación del backend.
+
+
+4. AUTENTICACIÓN Y SEGURIDAD
+---------------------------
+- El login compara contraseñas almacenadas como hashes scrypt; no guarda la
+  contraseña en claro en PostgreSQL.
+- El backend firma JWT HS256 con expiración, emisor y audiencia. La duración
+  predeterminada del access token es 15 minutos; el refresh token predeterminado
+  dura 7 días y se guarda en la base de datos como hash.
+- El rol viene del registro de usuario consultado en PostgreSQL, se firma en el
+  JWT y se valida en cada ruta protegida. Administrador y Operador son perfiles
+  distintos; el Operador conserva acceso de lectura a cámaras y dashboard.
+- /api/v1/chat, acciones de auditoría, PINes y telemetría publicada con JWT son
+  funciones de Administrador. El Operador no puede obtener permisos escribiendo
+  una instrucción en el chat o manipulando botones del navegador.
+- TELEMETRY_API_KEY es para comunicación servidor-a-servidor; no debe ponerse en
+  variables VITE_ ni enviarse desde el navegador.
+- Los PINes temporales se guardan con hash HMAC para validación y cifrado AES-GCM
+  para su lectura administrativa. Su vencimiento y operaciones se auditan.
+- Las URLs de video son firmadas y temporales. El catálogo de cámaras permite
+  limitar IDs a rutas conocidas.
+- En producción, JWT_SECRET, DATABASE_URL, TELEMETRY_API_KEY, contraseñas de
+  cuentas, OPENROUTER_API_KEY y tokens/secretos de Telegram son secretos del
+  backend. Nunca incluir sus valores reales en esta documentación, frontend o
+  control de versiones.
+
+
+5. EVENTOS, REGLAS Y CÁMARAS
+---------------------------
+El receptor admite tanto el esquema normalizado de AEGIS como el envoltorio del
+gemelo con campos tipo_evento, origen, zona, valor y metadata. El parser convierte
+temperatura, voltaje, aforo y otros eventos a un esquema validado. Si no hay una
+lectura de voltaje, eso significa «desconocido», no «0 V».
+
+Reglas importantes actuales:
+  - temperatura mayor que 38 °C genera HIGH_TEMPERATURE;
+  - una lectura real de 0 V genera POWER_LOSS;
+  - los indicadores de intrusión y Lockdown generan sus alertas;
+  - los cambios de alimentación se comparan con el último estado conocido para
+    evitar avisos repetidos en cada lectura.
+
+El catálogo backend contiene nueve cámaras. El dashboard puede ocultar algunas
+de su vista sin quitarlas del catálogo backend. La API de cámaras permite a los
+perfiles de lectura permitidos pedir feeds con URL temporal firmada.
+
+La selección de cámara desde el dashboard puede publicarse como evento cuando
+la sesión tiene permiso. En modo Operador la selección es local al visor: no se
+usa para publicar telemetría.
+
+
+6. ARGUS, HERMES Y REPORTES
+--------------------------
+Argus se atiende en POST /api/v1/chat y solo acepta Administradores. Su lista de
+herramientas se limita por rol y tipo de solicitud. Entre las herramientas
+actuales están:
+  - consulta de estado y actividad reciente;
+  - métricas agregadas por período;
+  - comprobación de cámaras del catálogo;
+  - generación y revocación de PIN temporal con auditoría;
+  - envío de reporte agregado al Telegram privado vinculado.
+
+Al revocar por puerta y persona, si hay más de un PIN coincidente Argus muestra
+los IDs y pide que el Administrador elija. El PIN recién generado se devuelve
+al administrador como resultado privado y no se envía al proveedor LLM como
+resultado de la herramienta.
+
+Hermes recibe el webhook privado en POST /api/v1/telegram/webhook. Valida el
+secreto del webhook, comprueba que el chat sea privado, aplica lista permitida y
+límites de frecuencia. El perfil Operador puede recibir la indicación de que
+Argus está reservado a Administradores; no se invoca el modelo para ese perfil.
+
+Existe el comando ejecutable backend.jobs.daily_argus_report para elaborar un
+resumen del día anterior con conexión de solo lectura. La tarea necesita que el
+entorno de despliegue tenga programada su ejecución y sus secretos; revisar el
+programador activo antes de asumir que corre automáticamente.
+
+
+7. EJECUCIÓN Y PRUEBAS
+----------------------
+Requisitos: Python compatible con requirements.txt, Node.js/npm y PostgreSQL
+para ejecutar las rutas que persisten datos.
+
+Frontend de desarrollo:
+  cd frontend
+  npm install
+  npm run dev
+
+Backend de desarrollo:
+  python3 -m venv .venv
+  source .venv/bin/activate
+  pip install -r requirements.txt
+  uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
+
+Verificación:
+  .venv/bin/pytest -q
+  cd frontend && npm test && npm run build
+
+Variables principales del frontend (se incrustan durante el build):
+  VITE_AUTH_API_URL       endpoint de login de AEGIS
+  VITE_WS_URL             WebSocket de lectura del dashboard
+  VITE_TELEMETRY_WS_URL   endpoint de publicación; no autoriza al Operador
+  VITE_DEMO_AUTH          modo demo de desarrollo, no usar para producción
+
+Variables principales del backend:
+  ENVIRONMENT, DATABASE_URL, JWT_SECRET, TELEMETRY_API_KEY,
+  ALLOWED_ORIGINS, DEMO_OPERATOR_PASSWORD, DEMO_ADMIN_PASSWORD,
+  GEMELO_MEDIA_BASE_URL, OPENROUTER_API_KEY, OPENROUTER_MODEL,
+  TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET, TELEGRAM_USER_MAP,
+  ARGUS_REPORT_DATABASE_URL y ARGUS_REPORT_TIMEZONE.
+
+Usar siempre placeholders al compartir comandos. No colocar DATABASE_URL ni
+claves de servicio en el frontend. Configurar en Render la URL interna de la
+base cuando el servicio API y PostgreSQL estén en la misma región.
+
+
+8. LATENCIA: QUÉ MIDE Y CÓMO REDUCIRLA
+-------------------------------------
+El texto «MS» del header procede de DataReceiver. Cada 5 segundos el navegador
+envía un mensaje ping por /ws/dashboard y cronometra con performance.now() hasta
+recibir pong. Por eso es RTT (ida y vuelta) navegador <-> API Render, no el
+tiempo de una consulta SQL ni el tiempo del modelo OpenRouter.
+
+La lectura actual es una muestra reciente, no una mediana. Las etiquetas de
+calidad del header son: buena hasta 100 ms, advertencia hasta 250 ms y crítica
+por encima de 250 ms. El WebSocket permite mantener el canal vivo; mandar más
+pinges no acorta físicamente la ruta de red.
+
+Plan recomendado, en orden:
+  1. Registrar RTT durante al menos 5-10 minutos desde la oficina, con hora,
+     tipo de conexión y ubicación aproximada. Comparar mediana y p95; un pico
+     aislado no basta para decidir una migración.
+  2. Medir desde una red cableada, Wi-Fi y, si se puede, hotspot móvil. Revisar
+     VPN, proxy, cortafuegos, pérdida de paquetes y congestión del Wi-Fi.
+  3. Confirmar en Render la región actual de API, PostgreSQL y gemelo. Si la
+     mayoría de usuarios están en una sola oficina, probar API en la región más
+     cercana a ella. Mantener API y PostgreSQL juntas reduce el RTT interno de
+     consultas y persistencia.
+  4. Confirmar si el servicio Render se suspende cuando queda inactivo. Mantener
+     el servicio activo reduce cold starts y demoras de reconexión, pero no es
+     garantía de reducir el RTT estable de cada ping.
+  5. Instrumentar métricas separadas: tiempo de apertura del WebSocket,
+     ping/pong RTT, recepción de telemetría, persistencia y ACK del emisor,
+     entrega del evento al navegador y llamadas Argus/OpenRouter. Esto señala
+     si el problema es red, servidor, base o proveedor LLM.
+  6. Si RTT es alto desde varias redes, revisar ruta/región y carga de la API.
+     Si el RTT es normal pero la telemetría tarda, revisar el pool PostgreSQL,
+     consultas/índices y el tiempo entre persistencia y broadcast.
+  7. Después de cada cambio, repetir la misma medición y comparar p50/p95 con
+     la línea base. Mantener el ping/pong como medida de red, sin mezclarlo con
+     métricas de base de datos u OpenRouter.
+
+Importante: la ubicación de los usuarios importa tanto como la de Render. Para
+escoger una región hace falta saber dónde está la oficina y confirmar qué
+regiones permite la configuración real de Render. El repositorio no fija esa
+región.
+
+
+9. INCIDENCIAS IMPORTANTES Y SOLUCIONES
+---------------------------------------
+
+Contrato de telemetría distinto entre AEGIS y el gemelo
+  Problema: algunos emisores usan tipo_evento/origen/zona/valor y otros envían
+  campos ya normalizados. Una validación única podía rechazar un evento válido.
+  Solución: parser de adaptación, validación Pydantic y pruebas de ambos
+  formatos. Los valores ausentes no se convierten en cero.
+
+Falsos avisos de pérdida eléctrica y trabajo repetido en cada lectura
+  Problema: confundir datos ausentes con 0 V o consultar el estado anterior en
+  la base por cada lectura podía producir avisos incorrectos y consultas extra.
+  Solución: detectar transiciones reales de voltaje, sembrar el último estado
+  conocido al iniciar desde datos persistidos y no crear transición si la
+  lectura falta o es inválida.
+
+Notificaciones externas podían retrasar el ACK de telemetría
+  Problema: Telegram es una red externa y su respuesta no debe bloquear la
+  confirmación al emisor.
+  Solución: persistir primero y programar el envío crítico de Hermes como tarea
+  asíncrona sin esperarlo desde el flujo de ACK. No hay cola durable hoy; para
+  entrega garantizada, añadir outbox/cola y reintentos controlados.
+
+Argus podía preguntar quién era Administrador aunque el header mostrara el rol
+  Problema: el modelo no recibía explícitamente el contexto de rol confiable.
+  Solución: pasar al prompt de sistema el rol derivado del JWT validado y prohibir
+  que una afirmación escrita cambie permisos. El endpoint y cada herramienta
+  vuelven a validar Admin; Operador queda en modo visual.
+
+Feeds de cámara y exposición accidental de medios
+  Riesgo: una URL directa o una carpeta pública expondría videos sin control.
+  Solución: catálogo cerrado de IDs y URL HMAC con vencimiento generada por la
+  API. Para oficina real también se requiere relay privado y controles de red.
+
+Estados tácticos podían parecer controles físicos
+  Riesgo: el dashboard representa Lockdown/Evacuación como modos locales.
+  Solución: etiquetarlos como simulación y no afirmar que cambiaron cerraduras.
+  La integración física es una fase separada, no una función ya resuelta.
+
+Referencias de cambios que consolidaron esas soluciones
+  d5330c2  Adaptación del contrato del gemelo a la telemetría AEGIS.
+  181e334  Eliminación de una consulta de base repetida para cada voltaje.
+  c72e230  Notificaciones críticas asíncronas para no bloquear el ACK.
+  befffb0  Revocación de PIN por Argus e informes generales al Telegram vinculado.
+  b5f74dc  Argus con rol JWT verificado y Operador en vista de solo lectura.
+
+
+10. CÓMO CONECTAR UNA OFICINA REAL
+----------------------------------
+La integración debe empezar en modo de solo lectura y con un integrador de
+control de acceso, redes y seguridad física. No conectar relés de puertas,
+salidas de emergencia o alarmas directamente al dashboard.
+
+Fase A — Inventario y diseño
+  - Identificar fabricantes/modelos de controladoras, lectores, cámaras,
+    sensores, paneles de alarma y el sistema de gestión existente.
+  - Confirmar APIs y protocolos soportados oficialmente, permisos, límites,
+    formatos de eventos, retención, zonas horarias y responsable de operación.
+  - Definir zonas, IDs estables, umbrales, horarios y qué eventos puede leer o
+    ejecutar cada perfil.
+
+Fase B — Gateway de borde y red
+  - Usar un gateway industrial/computadora administrada dentro de una VLAN
+    separada para integrar equipos locales; no exponer cámaras/controladoras a
+    Internet directamente.
+  - Preferir integración documentada del fabricante. Para lectores/control de
+    acceso, considerar protocolos seguros compatibles con el equipo, como
+    OSDP Secure Channel, en vez de cableado/protocolos heredados sin protección.
+  - El gateway debe iniciar conexiones salientes TLS hacia AEGIS, autenticarse
+    con credenciales de servicio rotables y almacenar una cola local si se
+    necesita soportar cortes de Internet.
+
+Fase C — Telemetría de solo lectura
+  - Mapear cada dispositivo a source_id, zona, tipo_evento, unidades y timestamp.
+  - Validar primero en entorno de prueba y después observar en paralelo con el
+    sistema actual («shadow mode»), sin cambiar puertas ni alarmas.
+  - Comparar las señales con fuentes de referencia y probar desconexión,
+    reconexión, valores inválidos, pérdida de energía y relojes desfasados.
+
+Fase D — Cámaras
+  - Mantener feeds en un NVR/relay de la red privada; el navegador recibe
+    credenciales o URLs de vida corta a través de un backend autorizado.
+  - Revisar permisos por cámara, ancho de banda, retención y política de acceso.
+    No registrar URLs firmadas ni tokens en bitácoras o capturas compartidas.
+
+Fase E — Acciones físicas (solo tras aprobación)
+  - Integrar mediante la API del fabricante/controladora existente; la
+    controladora certificada mantiene reglas locales, modos degradados y
+    operación manual.
+  - Diseñar autorización Admin en servidor, auditoría inmutable, controles
+    contra repetición, confirmación y límites de seguridad. Probar primero en
+    banco, después en un área no crítica y con un plan de reversión.
+  - Validar salida de emergencia, accesibilidad, normativa local, respuesta a
+    fallos de energía/red y procedimientos del personal con especialistas.
+  - AEGIS no debe ser el único mecanismo para apertura de emergencia, evacuación
+    o respuesta de seguridad.
+
+Fase F — Operación y aceptación
+  - Definir responsables, monitoreo, backups, rotación de secretos, respuesta a
+    incidentes, ventanas de mantenimiento y soporte del fabricante.
+  - Acordar métricas de disponibilidad/latencia y criterios de aceptación antes
+    de habilitar cualquier comando físico.
+
+
+11. DIRECTORIOS DE REFERENCIA
+-----------------------------
+backend/main.py                    Aplicación FastAPI, lifespan y routers.
+backend/config.py                  Variables y validación de configuración.
+backend/routers/                   Auth, chat, cámaras, PINes, auditoría,
+                                   telemetría, WebSockets y Telegram.
+backend/agents/argus/              Cliente OpenRouter y herramientas de Argus.
+backend/services/                  PostgreSQL, reglas, reportes, cámaras,
+                                   PINes, Telegram y notificaciones.
+backend/models/schemas.py          Modelos Pydantic y enums.
+backend/sql/                       Migraciones SQL aplicadas al iniciar.
+backend/tests/                     Pruebas de permisos, parsing, alertas y flujos.
+frontend/src/                      Autenticación, dashboard y módulos UI.
+frontend/styles/                   Estilos globales y estilos por componente.
+frontend/public/models/            Modelos 3D publicados por el frontend.
+models_3d/                         Modelos, navgrid y datos del gemelo local.
+README.md                          Inicio rápido e integración de despliegue.
+
+FIN DEL DOCUMENTO

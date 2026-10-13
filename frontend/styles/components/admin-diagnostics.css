@@ -40,5 +40,5 @@
 .admin-pin-result[hidden] { display: none; }
 .admin-diagnostics-status { min-height: 18px; margin: 0; padding: 0 18px 12px; color: var(--aegis-green); font: 700 7px var(--font-mono); }
 .admin-diagnostics-status.is-error { color: var(--aegis-red); }
-.admin-diagnostics-button { min-height: 30px; padding: 0 9px; color: var(--aegis-accent); cursor: pointer; background: rgba(var(--aegis-accent-rgb),.06); border: 1px solid rgba(var(--aegis-accent-rgb),.3); border-radius: 7px; font: 700 6px var(--font-mono); letter-spacing: .45px; }
+.admin-diagnostics-button { min-height: 30px; padding: 0 9px; color: var(--aegis-accent); cursor: pointer; background: rgba(var(--aegis-accent-rgb),.06); border: 1px solid rgba(var(--aegis-accent-rgb),.3); border-radius: 7px; font: 700 9px var(--font-mono); letter-spacing: .45px; }
 @media (max-width: 720px) { .admin-pin-form { grid-template-columns: 1fr 1fr; }.admin-charts { grid-template-columns: 1fr; }.admin-diagnostics-dialog { max-height: 96dvh; }.admin-diagnostics-shell { max-height: 96dvh; } }

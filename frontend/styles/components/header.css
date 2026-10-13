@@ -24,8 +24,8 @@
 .led-warning { background: var(--aegis-orange); box-shadow: 0 0 9px rgba(255,153,0,.5); }
 .led-critical { background: var(--aegis-red); box-shadow: 0 0 10px rgba(255,0,85,.65); animation: led-breathe 1.6s ease-in-out infinite; }
 .led-offline { background: #8393a9; box-shadow: 0 0 8px rgba(131,147,169,.25); }
-.header-connection { display: flex; align-items: center; gap: 7px; color: var(--aegis-text-muted); font: 700 7px var(--font-mono); }
-.network-latency { padding: 5px 7px; color: #8491a6; background: rgba(255,255,255,.025); border: 1px solid rgba(255,255,255,.08); border-radius: 6px; font: 700 7px var(--font-mono); white-space: nowrap; }
+.header-connection { display: flex; align-items: center; gap: 7px; color: var(--aegis-text-muted); font: 700 10.5px var(--font-mono); }
+.network-latency { padding: 5px 7px; color: #8491a6; background: rgba(255,255,255,.025); border: 1px solid rgba(255,255,255,.08); border-radius: 6px; font: 700 10.5px var(--font-mono); white-space: nowrap; }
 .network-latency::before { content: "●"; margin-right: 5px; color: currentColor; }
 .network-latency[data-quality="good"] { color: #00ff88; border-color: rgba(0,255,136,.3); }
 .network-latency[data-quality="warning"] { color: #ffad42; border-color: rgba(255,173,66,.4); }

@@ -4,6 +4,9 @@ Dashboard modular para la futura plataforma de monitoreo del gemelo digital. El
 prototipo se ejecuta en localhost y no inventa telemetría: las métricas y la
 consola esperan eventos reales del modelo.
 
+Para la explicación detallada de arquitectura, seguridad, incidentes, latencia y
+una futura integración física, consulta [DOCUMENTACION_AEGIS.txt](DOCUMENTACION_AEGIS.txt).
+
 ## Estructura
 
 ```text
