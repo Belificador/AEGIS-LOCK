@@ -1,4 +1,6 @@
 from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
+import pytest
 
 from backend.config import Settings
 from backend.core.security import create_access_token
@@ -72,3 +74,14 @@ def test_dashboard_websocket_echoes_heartbeat_round_trip() -> None:
             assert pong["type"] == "pong"
             assert pong["id"] == "ping-test-1"
             assert isinstance(pong["server_time"], int)
+
+
+def test_operator_can_read_dashboard_but_cannot_publish_telemetry() -> None:
+    token, _ = create_access_token(subject="operador", role="operator")
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws/telemetry") as telemetry_socket:
+            telemetry_socket.send_json({"type": "auth", "token": token})
+            with pytest.raises(WebSocketDisconnect) as disconnected:
+                telemetry_socket.receive_json()
+
+    assert disconnected.value.code == 4403

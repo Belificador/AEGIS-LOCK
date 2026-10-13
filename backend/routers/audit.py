@@ -1,11 +1,11 @@
-"""Controlled audit events initiated by authenticated Dashboard operators."""
+"""Controlled audit events initiated by authenticated Dashboard administrators."""
 
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from slowapi import Limiter
 
-from backend.core.dependencies import require_operator
+from backend.core.dependencies import require_admin
 from backend.core.rate_limit import limiter
 from backend.models.schemas import AuditActionRequest
 from backend.services.argus_notifications import schedule_mode_transition
@@ -20,7 +20,7 @@ _FORBIDDEN_DETAIL_KEYS = {"pin", "pin_code", "password", "token", "secret", "ent
 async def record_action(
     payload: AuditActionRequest,
     request: Request,
-    claims: Annotated[dict[str, Any], Depends(require_operator)],
+    claims: Annotated[dict[str, Any], Depends(require_admin)],
 ) -> dict[str, Any]:
     if len(payload.details) > 12:
         raise HTTPException(status_code=422, detail="Demasiados campos de auditoría")

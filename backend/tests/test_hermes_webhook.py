@@ -27,7 +27,7 @@ def test_argus_cron_settings_need_only_report_credentials() -> None:
     assert settings.service_role == "argus_cron"
 
 
-def test_hermes_accepts_authorized_private_chat_and_calls_argus_read_only(monkeypatch) -> None:
+def test_hermes_accepts_admin_private_chat_and_calls_argus_read_only(monkeypatch) -> None:
     calls = []
 
     class FakePool:
@@ -41,8 +41,8 @@ def test_hermes_accepts_authorized_private_chat_and_calls_argus_read_only(monkey
         return None
 
     async def get_user(username):
-        assert username == "operador"
-        return {"username": "operador", "role": "operator"}
+        assert username == "admin"
+        return {"username": "admin", "role": "admin"}
 
     async def ask_argus(message, claims):
         calls.append((message, claims))
@@ -53,7 +53,7 @@ def test_hermes_accepts_authorized_private_chat_and_calls_argus_read_only(monkey
 
     monkeypatch.setattr(hermes, "get_settings", lambda: Settings(
         telegram_webhook_secret="s" * 40,
-        telegram_user_map="123456789:operador",
+        telegram_user_map="123456789:admin",
     ))
     monkeypatch.setattr(hermes, "ask_argus", ask_argus)
     monkeypatch.setattr(hermes, "send_telegram_message", send_message)
@@ -79,9 +79,61 @@ def test_hermes_accepts_authorized_private_chat_and_calls_argus_read_only(monkey
     assert response.status_code == 200
     assert calls[0] == (
         "Consulta la temperatura más reciente del edificio. Indica si no hay lectura disponible.",
-        {"sub": "operador", "username": "operador", "role": "operator", "channel": "telegram"},
+        {"sub": "admin", "username": "admin", "role": "admin", "channel": "telegram"},
     )
     assert calls[1] == ("Temperatura: 22 °C", 123456789)
+
+
+def test_hermes_does_not_invoke_argus_for_operator_account(monkeypatch) -> None:
+    replies = []
+
+    class FakePool:
+        async def fetchval(self, _query, update_id):
+            return update_id
+
+    async def no_connect(*_args, **_kwargs):
+        return None
+
+    async def no_close():
+        return None
+
+    async def get_user(username):
+        return {"username": username, "role": "operator"}
+
+    async def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("Operator must not invoke Argus")
+
+    async def send_message(text, *, chat_id=None):
+        replies.append((text, chat_id))
+
+    monkeypatch.setattr(hermes, "get_settings", lambda: Settings(
+        telegram_webhook_secret="s" * 40,
+        telegram_user_map="123456789:operador",
+    ))
+    monkeypatch.setattr(hermes, "ask_argus", fail_if_called)
+    monkeypatch.setattr(hermes, "send_telegram_message", send_message)
+    monkeypatch.setattr(postgres_service, "pool", FakePool())
+    monkeypatch.setattr(postgres_service, "connect", no_connect)
+    monkeypatch.setattr(postgres_service, "close", no_close)
+    monkeypatch.setattr(postgres_service, "get_user", get_user)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/v1/telegram/webhook",
+            headers={"X-Telegram-Bot-Api-Secret-Token": "s" * 40},
+            json={
+                "update_id": 83003,
+                "message": {
+                    "from": {"id": 123456789, "is_bot": False},
+                    "chat": {"id": 123456789, "type": "private"},
+                    "text": "¿Cuál es el estado?",
+                },
+            },
+        )
+
+    assert response.status_code == 200
+    assert len(replies) == 1
+    assert "solo para sesiones de Administrador" in replies[0][0]
 
 
 def test_hermes_rejects_invalid_webhook_secret(monkeypatch) -> None:

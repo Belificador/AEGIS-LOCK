@@ -5,6 +5,7 @@ const SCHEDULE_KEY = "aegis.closeSchedule.v1";
 const MODE_KEY = "aegis.localMode.v1";
 
 export function mountSecurityControls(root, { role, onModeChange, onOpenCamera, tacticalDockRoot }) {
+  const isAdmin = role === "admin";
   root.innerHTML = `
     <section class="panel-card security-panel" aria-labelledby="security-title">
       <div class="panel-heading"><span id="security-title">Control de seguridad</span><small>SIM / LOCAL</small></div>
@@ -49,11 +50,15 @@ export function mountSecurityControls(root, { role, onModeChange, onOpenCamera, 
   lockdownButton.className = "security-button lockdown-button";
   lockdownButton.type = "button";
   lockdownButton.innerHTML = '<span class="security-button-icon" aria-hidden="true">▣</span><span class="lockdown-label">ACTIVAR MODO LOCKDOWN</span><b aria-hidden="true">↗</b>';
+  lockdownButton.disabled = !isAdmin;
+  lockdownButton.title = isAdmin ? "Activar estado de demostración" : "Solo lectura: acción reservada al Administrador";
   const evacuationButton = document.createElement("button");
   evacuationButton.id = "evacuation-button";
   evacuationButton.className = "security-button evacuation-button";
   evacuationButton.type = "button";
   evacuationButton.innerHTML = '<span class="security-button-icon" aria-hidden="true">⚠</span><span>ACTIVAR MODO / EVACUACIÓN</span>';
+  evacuationButton.disabled = !isAdmin;
+  evacuationButton.title = isAdmin ? "Activar estado de demostración" : "Solo lectura: acción reservada al Administrador";
   (tacticalDockRoot || root.querySelector(".security-panel")).append(lockdownButton, evacuationButton);
   const cameraVideo = root.querySelector("#selected-camera-video");
   const cameraPlaceholder = root.querySelector(".camera-placeholder");
@@ -107,7 +112,9 @@ export function mountSecurityControls(root, { role, onModeChange, onOpenCamera, 
   let schedule = readSchedule();
   let initialMode = readMode();
 
-  lockdownButton.addEventListener("click", () => lockdownDialog.showModal());
+  lockdownButton.addEventListener("click", () => {
+    if (isAdmin) lockdownDialog.showModal();
+  });
   dismissLockdown.addEventListener("click", () => lockdownDialog.close("cancel"));
   lockdownDialog.addEventListener("click", (event) => {
     if (event.target === lockdownDialog) lockdownDialog.close("cancel");
@@ -115,12 +122,15 @@ export function mountSecurityControls(root, { role, onModeChange, onOpenCamera, 
   cancelLockdown.addEventListener("click", () => lockdownDialog.close("cancel"));
   confirmLockdown.addEventListener("click", () => {
     lockdownDialog.close("confirm");
+    if (!isAdmin) return;
     setMode("LOCKDOWN", "ACTIVACIÓN MANUAL");
   });
   evacuationButton.addEventListener("click", () => {
+    if (!isAdmin) return;
     if (window.confirm("¿Activar el estado de evacuación simulado? No se enviará ningún comando físico.")) setMode("EVACUACIÓN", "ACTIVACIÓN MANUAL");
   });
   toggle.addEventListener("click", () => {
+    if (!isAdmin) return;
     if (schedule?.enabled) {
       schedule = null;
       localStorage.removeItem(SCHEDULE_KEY);
@@ -132,10 +142,10 @@ export function mountSecurityControls(root, { role, onModeChange, onOpenCamera, 
     renderSchedule();
     checkSchedule();
   });
-  release.disabled = role !== "admin";
-  release.title = role === "admin" ? "Solo restablece el estado simulado" : "La liberación está reservada al perfil Administrador";
+  release.disabled = !isAdmin;
+  release.title = isAdmin ? "Solo restablece el estado simulado" : "Solo lectura: acción reservada al Administrador";
   release.addEventListener("click", () => {
-    if (role !== "admin") return;
+    if (!isAdmin) return;
     if (schedule?.enabled) {
       schedule.activatedDate = localDateKey(new Date());
       localStorage.setItem(SCHEDULE_KEY, JSON.stringify(schedule));
@@ -147,12 +157,13 @@ export function mountSecurityControls(root, { role, onModeChange, onOpenCamera, 
     const enabled = Boolean(schedule?.enabled);
     toggle.textContent = enabled ? "CANCELAR CIERRE" : "PROGRAMAR CIERRE";
     scheduleInput.value = enabled ? schedule.time : scheduleInput.value || "18:00";
-    scheduleInput.disabled = enabled;
+    scheduleInput.disabled = enabled || !isAdmin;
+    toggle.disabled = !isAdmin;
     status.textContent = enabled ? `Cierre local programado diariamente a las ${schedule.time}.` : "Sin cierre automático programado.";
   }
 
   function checkSchedule() {
-    if (!schedule?.enabled) return;
+    if (!isAdmin || !schedule?.enabled) return;
     const now = new Date();
     const today = localDateKey(now);
     const [hours, minutes] = schedule.time.split(":").map(Number);
@@ -164,6 +175,7 @@ export function mountSecurityControls(root, { role, onModeChange, onOpenCamera, 
   }
 
   function setMode(mode, source) {
+    if (!isAdmin) return;
     initialMode = { mode, source };
     localStorage.setItem(MODE_KEY, JSON.stringify(initialMode));
     onModeChange(mode, source);

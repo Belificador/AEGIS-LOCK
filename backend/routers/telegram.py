@@ -124,6 +124,9 @@ async def receive_telegram_update(
     if direct_reply is not None:
         await _reply(chat_id, direct_reply)
         return {"ok": True}
+    if user["role"] != "admin":
+        await _reply(chat_id, "Argus está disponible solo para sesiones de Administrador.")
+        return {"ok": True}
 
     claims: dict[str, Any] = {
         "sub": user["username"],

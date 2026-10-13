@@ -7,7 +7,7 @@ from backend.routers import ai_chat
 from backend.services.postgres_client import postgres_service
 
 
-def test_argus_chat_requires_authenticated_dashboard_session(monkeypatch) -> None:
+def test_argus_chat_is_admin_only_and_requires_authenticated_dashboard_session(monkeypatch) -> None:
     async def no_connect(*_args, **_kwargs):
         return None
 
@@ -16,23 +16,30 @@ def test_argus_chat_requires_authenticated_dashboard_session(monkeypatch) -> Non
 
     async def ask_argus(message, claims):
         assert message == "Consulta el estado"
-        assert claims["role"] == "operator"
+        assert claims["role"] == "admin"
         return "Estado consultado por Argus."
 
     monkeypatch.setattr(postgres_service, "connect", no_connect)
     monkeypatch.setattr(postgres_service, "close", no_close)
     monkeypatch.setattr(ai_chat, "ask_argus", ask_argus)
-    token, _ = create_access_token(subject="operador", role="operator")
+    operator_token, _ = create_access_token(subject="operador", role="operator")
+    admin_token, _ = create_access_token(subject="admin", role="admin")
 
     with TestClient(app) as client:
         unauthorized = client.post("/api/v1/chat", json={"message": "Consulta el estado"})
+        operator_response = client.post(
+            "/api/v1/chat",
+            headers={"Authorization": f"Bearer {operator_token}"},
+            json={"message": "Consulta el estado"},
+        )
         response = client.post(
             "/api/v1/chat",
-            headers={"Authorization": f"Bearer {token}"},
+            headers={"Authorization": f"Bearer {admin_token}"},
             json={"message": "Consulta el estado"},
         )
 
     assert unauthorized.status_code == 401
+    assert operator_response.status_code == 403
     assert response.status_code == 200
     assert response.json() == {"response": "Estado consultado por Argus.", "source": "openrouter-argus"}
 

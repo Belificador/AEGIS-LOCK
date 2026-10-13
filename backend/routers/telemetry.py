@@ -50,12 +50,12 @@ async def telemetry_socket(websocket: WebSocket) -> None:
         claims = await authenticate_websocket(websocket)
         if claims is None:
             return
-        if claims.get("role") not in {"admin", "operator"}:
+        if claims.get("role") != "admin":
             await postgres_service.write_error_log(
                 error_type="403 Forbidden",
                 description="Telemetry publisher role rejected",
             )
-            await websocket.close(code=4403, reason="Telemetry publisher role required")
+            await websocket.close(code=4403, reason="Administrator role required to publish telemetry")
             return
         publisher = str(claims.get("sub", "operator"))
 

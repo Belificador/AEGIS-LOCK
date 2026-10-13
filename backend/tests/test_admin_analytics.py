@@ -30,7 +30,13 @@ def test_analytics_routes_are_admin_only_and_return_database_reports(monkeypatch
         report = client.get("/api/v1/analytics/history?days=3", headers={"Authorization": f"Bearer {admin}"})
         logs = client.get("/api/v1/analytics/errors", headers={"Authorization": f"Bearer {admin}"})
         denied = client.get("/api/v1/analytics/errors", headers={"Authorization": f"Bearer {operator}"})
+        denied_action = client.post(
+            "/api/v1/audit",
+            headers={"Authorization": f"Bearer {operator}"},
+            json={"action": "LOCKDOWN_ACTIVATED", "details": {"source": "test"}},
+        )
 
     assert report.status_code == 200 and report.json()["samples"] == []
     assert logs.status_code == 200 and logs.json()["total"] == 0
     assert denied.status_code == 403
+    assert denied_action.status_code == 403

@@ -6,6 +6,9 @@
 .signal-status b { overflow: hidden; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
 .signal-status .status-led { width: 6px; height: 6px; }
 .metrics-stack { display: flex; flex-direction: column; gap: 10px; }
+.operator-view-note { margin-top: auto; padding: 13px 14px; color: var(--aegis-text-secondary); background: linear-gradient(145deg,rgba(16,26,44,.78),rgba(10,17,30,.78)); border: 1px solid var(--aegis-border); border-radius: var(--panel-radius); }
+.operator-view-note strong { color: var(--aegis-accent); font: 700 8px var(--font-mono); letter-spacing: .8px; }
+.operator-view-note p { margin: 8px 0 0; color: var(--aegis-text-muted); font-size: 11px; line-height: 1.55; }
 .sidebar-chat-root { display: flex; min-height: 390px; flex: 1 0 390px; }
 @media (max-width: 1200px) { .metrics-stack { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); }.metric-card-energy { grid-column: 1 / -1; }.sidebar-chat-root { min-height: 340px; flex: 1 0 340px; } }
 @media (max-width: 780px) { .metrics-stack { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); }.metric-card-energy { grid-column: 1 / -1; }.sidebar-chat-root { min-height: 290px; flex: initial; } }

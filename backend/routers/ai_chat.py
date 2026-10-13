@@ -1,10 +1,10 @@
-"""Authenticated chat endpoint for Argus."""
+"""Administrator-only chat endpoint for Argus."""
 
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from backend.core.dependencies import current_claims
+from backend.core.dependencies import require_admin
 from backend.core.rate_limit import limiter
 from backend.models.schemas import ChatRequest, ChatResponse
 from backend.agents.argus.agent import ask_argus
@@ -18,7 +18,7 @@ router = APIRouter(prefix="/chat", tags=["assistant"])
 async def chat(
     payload: ChatRequest,
     request: Request,
-    claims: Annotated[dict, Depends(current_claims)],
+    claims: Annotated[dict, Depends(require_admin)],
 ) -> ChatResponse:
     try:
         response = await ask_argus(payload.message, claims)

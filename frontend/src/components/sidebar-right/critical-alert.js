@@ -13,7 +13,8 @@ export function primeAlertAudio() {
   }
 }
 
-export function mountCriticalAlert({ onAcknowledge } = {}) {
+export function mountCriticalAlert({ role = "operator", onAcknowledge } = {}) {
+  const canAcknowledge = role === "admin";
   const dialog = document.createElement("dialog");
   dialog.className = "critical-alert-dialog";
   dialog.setAttribute("aria-modal", "true");
@@ -35,8 +36,11 @@ export function mountCriticalAlert({ onAcknowledge } = {}) {
   const message = dialog.querySelector("#critical-alert-message");
   const zoneLabel = dialog.querySelector("[data-zone]");
   const countLabel = dialog.querySelector("[data-count]");
+  const acknowledgeButton = dialog.querySelector(".critical-alert-ack");
+  if (!canAcknowledge) acknowledgeButton.textContent = "CERRAR AVISO · SOLO ESTA VISTA";
   const queue = [];
   const acked = loadAcknowledged();
+  const dismissed = new Set();
   let current = null;
   let alarm = null;
   let disposed = false;
@@ -72,7 +76,7 @@ export function mountCriticalAlert({ onAcknowledge } = {}) {
       const key = candidate.oneShot && eventId
         ? `${candidate.code}:${eventId}`
         : `${candidate.code}:${source}:${zone}`;
-      if (acked.has(key) || queue.some((item) => item.key === key) || current?.key === key) continue;
+      if (acked.has(key) || dismissed.has(key) || queue.some((item) => item.key === key) || current?.key === key) continue;
       queue.push({ ...candidate, key, eventId, zone, source });
     }
     showNext();
@@ -134,12 +138,16 @@ export function mountCriticalAlert({ onAcknowledge } = {}) {
     alarm = null;
   }
 
-  dialog.querySelector(".critical-alert-ack").addEventListener("click", async () => {
+  acknowledgeButton.addEventListener("click", async () => {
     if (!current) return;
     stopAlarm();
-    acked.add(current.key);
-    saveAcknowledged(acked);
-    try { await onAcknowledge?.(current, { hasPending: queue.length > 0 }); } catch { /* keep local acknowledgement responsive */ }
+    if (canAcknowledge) {
+      acked.add(current.key);
+      saveAcknowledged(acked);
+      try { await onAcknowledge?.(current, { hasPending: queue.length > 0 }); } catch { /* keep local acknowledgement responsive */ }
+    } else {
+      dismissed.add(current.key);
+    }
     current = null;
     dialog.close();
     document.documentElement.classList.remove("critical-alert-active");

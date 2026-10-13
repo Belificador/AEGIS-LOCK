@@ -33,6 +33,7 @@ export function mountDashboard({ user, session, onLogout, wsUrl }) {
   });
   if (user.role === "admin") adminDiagnostics = mountAdminDiagnostics({ session });
   const criticalAlerts = mountCriticalAlert({
+    role: user.role,
     onAcknowledge: (incident, { hasPending }) => {
       void postAuditAction("ALARM_ACKNOWLEDGED", {
         event_id: incident.eventId,
@@ -46,7 +47,7 @@ export function mountDashboard({ user, session, onLogout, wsUrl }) {
       }
     },
   });
-  const sidebarLeft = mountSidebarLeft(document.querySelector("#sidebar-left-root"), { session });
+  const sidebarLeft = mountSidebarLeft(document.querySelector("#sidebar-left-root"), { session, role: user.role });
   const viewport = mountViewport(document.querySelector("#viewport-root"), { onCameraSelected: openCamera });
   const right = mountSidebarRight(document.querySelector("#sidebar-right-root"), {
     role: user.role,
@@ -65,7 +66,7 @@ export function mountDashboard({ user, session, onLogout, wsUrl }) {
       metadata: { camera_id: camera.id, name: camera.shortName, location: camera.location, feed_url: feedUrl },
     }),
   });
-  const cameraPublisher = session?.access_token
+  const cameraPublisher = user.role === "admin" && session?.access_token
     ? new TelemetryEmitter({ accessToken: () => session.access_token })
     : null;
   cameraPublisher?.connect();
@@ -103,7 +104,7 @@ export function mountDashboard({ user, session, onLogout, wsUrl }) {
     header.setMode(mode, source);
     right.setMode(label);
     viewport.setMode(label);
-    if (audit && mode !== previousMode) {
+    if (audit && user.role === "admin" && mode !== previousMode) {
       if (mode === "LOCKDOWN") void postAuditAction("LOCKDOWN_ACTIVATED", { source });
       if (mode === "EVACUACIÓN") void postAuditAction("EVACUATION_ACTIVATED", { source });
       if (mode === "NORMAL" && previousMode === "LOCKDOWN") void postAuditAction("LOCKDOWN_RELEASED", { source });
