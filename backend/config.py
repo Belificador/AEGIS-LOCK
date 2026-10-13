@@ -15,7 +15,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     app_name: str = "AEGIS LOCK API"
     environment: str = "local"
-    service_role: Literal["api", "argus_cron"] = Field(
+    service_role: Literal["api", "argus_cron", "evacuation_cron"] = Field(
         default="api", validation_alias=AliasChoices("AEGIS_SERVICE_ROLE", "SERVICE_ROLE")
     )
     api_v1_prefix: str = "/api/v1"
@@ -57,6 +57,8 @@ class Settings(BaseSettings):
     )
     telegram_user_map: str = Field(default="", repr=False)
     argus_report_timezone: str = "UTC"
+    evacuation_expected_zones: str = ""
+    evacuation_occupancy_stale_after_seconds: int = Field(default=180, ge=30, le=3600)
     max_request_bytes: int = Field(default=1_048_576, ge=1024)
 
     model_config = SettingsConfigDict(
@@ -121,6 +123,20 @@ class Settings(BaseSettings):
             normalized_pairs.append(f"{int(telegram_id)}:{username}")
         return ",".join(normalized_pairs)
 
+    @field_validator("evacuation_expected_zones")
+    @classmethod
+    def validate_evacuation_expected_zones(cls, value: str) -> str:
+        zones = [zone.strip() for zone in value.split(",") if zone.strip()]
+        if len(zones) > 50 or any(len(zone) > 80 for zone in zones):
+            raise ValueError("EVACUATION_EXPECTED_ZONES admite hasta 50 zonas de 80 caracteres")
+        if len({zone.casefold() for zone in zones}) != len(zones):
+            raise ValueError("EVACUATION_EXPECTED_ZONES no puede repetir zonas")
+        return ",".join(zones)
+
+    @property
+    def evacuation_zone_names(self) -> tuple[str, ...]:
+        return tuple(zone for zone in self.evacuation_expected_zones.split(",") if zone)
+
     @property
     def authorized_telegram_users(self) -> dict[int, str]:
         users: dict[int, str] = {}
@@ -155,13 +171,18 @@ class Settings(BaseSettings):
                         raise ValueError("TELEGRAM_BOT_TOKEN is required when Telegram users are authorized")
                     if not self.telegram_webhook_secret:
                         raise ValueError("TELEGRAM_WEBHOOK_SECRET is required when Telegram users are authorized")
-            else:
+            elif self.service_role == "argus_cron":
                 if not self.argus_report_database_url:
                     raise ValueError("ARGUS_REPORT_DATABASE_URL is required for the Argus Cron service")
                 if not self.openrouter_api_key:
                     raise ValueError("OPENROUTER_API_KEY is required for the Argus Cron service")
                 if not self.telegram_bot_token or not self.telegram_chat_id:
                     raise ValueError("TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are required for Argus Cron")
+            else:
+                if not self.argus_report_database_url:
+                    raise ValueError("ARGUS_REPORT_DATABASE_URL is required for the evacuation count Cron service")
+                if not self.telegram_bot_token or not self.telegram_user_map:
+                    raise ValueError("TELEGRAM_BOT_TOKEN and TELEGRAM_USER_MAP are required for evacuation alerts")
         elif any(not _is_loopback_origin(origin) for origin in self.allowed_origins):
             raise ValueError("Local ALLOWED_ORIGINS must use localhost or a loopback IP")
         elif not self.jwt_secret:

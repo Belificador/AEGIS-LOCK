@@ -24,17 +24,18 @@ def test_argus_revoke_by_door_and_user_audits_selected_pin(monkeypatch) -> None:
         assert include_inactive is False
         return [pin]
 
-    async def deactivate(pin_id):
+    async def deactivate_and_audit(pin_id, *, performed_by):
         deactivated.append(pin_id)
+        audits.append({
+            "action": "PIN_REVOKED",
+            "performed_by": performed_by,
+            "details": {"pin_id": pin_id, "door_name": pin["door_name"]},
+        })
         return {**pin, "is_active": False}
-
-    async def audit(**values):
-        audits.append(values)
 
     monkeypatch.setattr(postgres_service, "pool", object())
     monkeypatch.setattr(postgres_service, "list_temporary_pins", list_pins)
-    monkeypatch.setattr(postgres_service, "deactivate_temporary_pin", deactivate)
-    monkeypatch.setattr(postgres_service, "write_audit_log", audit)
+    monkeypatch.setattr(postgres_service, "deactivate_temporary_pin_and_audit", deactivate_and_audit)
 
     result = asyncio.run(temporary_pins.revoke_temporary_pin(
         created_by="admin-1",
@@ -60,17 +61,13 @@ def test_argus_does_not_revoke_ambiguous_pin_match(monkeypatch) -> None:
     async def list_pins(*, limit, include_inactive=False):
         return pins
 
-    async def deactivate(pin_id):
+    async def deactivate_and_audit(pin_id, *, performed_by):
         deactivated.append(pin_id)
         return None
 
-    async def audit(**values):
-        audits.append(values)
-
     monkeypatch.setattr(postgres_service, "pool", object())
     monkeypatch.setattr(postgres_service, "list_temporary_pins", list_pins)
-    monkeypatch.setattr(postgres_service, "deactivate_temporary_pin", deactivate)
-    monkeypatch.setattr(postgres_service, "write_audit_log", audit)
+    monkeypatch.setattr(postgres_service, "deactivate_temporary_pin_and_audit", deactivate_and_audit)
 
     result = asyncio.run(temporary_pins.revoke_temporary_pin(
         created_by="admin-1",

@@ -38,6 +38,14 @@ def test_payload_rejects_unknown_fields_and_cors_rejects_wildcards() -> None:
         Settings(allowed_origins=["https://untrusted.example"])
     with pytest.raises(ValidationError):
         Settings(openrouter_base_url="http://untrusted.example/v1")
+    with pytest.raises(ValidationError):
+        Settings(evacuation_expected_zones="Recepción,recepción")
+
+
+@pytest.mark.parametrize("source_id", ["x'); DROP TABLE security_events;--", "../../etc/passwd", "<svg/onload=alert(1)>"])
+def test_telemetry_rejects_injection_like_source_identifiers(source_id: str) -> None:
+    with pytest.raises(ValidationError):
+        TelemetryEvent.model_validate({"source_id": source_id, "temperature_c": 22})
 
 
 def test_login_role_is_derived_from_account_not_request_payload() -> None:

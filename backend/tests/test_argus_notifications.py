@@ -94,3 +94,34 @@ def test_mode_transition_notification_is_fire_and_forget_and_deduplicated(monkey
 
     assert len(sent) == 1
     assert "EVACUACIÓN SIMULADA ACTIVADA" in sent[0]
+
+
+def test_lockdown_access_notices_are_deduplicated_per_event_not_per_door(monkeypatch) -> None:
+    sent = []
+
+    async def capture(message):
+        sent.append(message)
+
+    monkeypatch.setattr(argus_notifications, "_last_notice_at", {})
+    monkeypatch.setattr(argus_notifications, "_in_flight", set())
+    monkeypatch.setattr(argus_notifications, "_send_to_admins", capture)
+
+    async def exercise():
+        alert = [{
+            "code": "ENTRY_DURING_LOCKDOWN",
+            "severity": "critical",
+            "message": "Acaba de ingresar una persona con el Lockdown activo",
+        }]
+        for event_id in ("entry-1", "entry-1", "entry-2"):
+            argus_notifications.schedule_telemetry_notices({
+                "event_id": event_id,
+                "source_id": "access-controller",
+                "zone": "Puerta Lobby",
+            }, alert)
+            while argus_notifications._in_flight:
+                await asyncio.gather(*tuple(argus_notifications._in_flight))
+
+    asyncio.run(exercise())
+
+    assert len(sent) == 2
+    assert all("Lockdown activo" in message for message in sent)

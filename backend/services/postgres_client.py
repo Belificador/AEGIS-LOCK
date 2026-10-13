@@ -214,7 +214,7 @@ class PostgresService:
                         alerts_json,
                     )
 
-    async def create_temporary_pin(
+    async def create_temporary_pin_if_hash_available(
         self,
         *,
         pin_id: str,
@@ -224,41 +224,56 @@ class PostgresService:
         target_user: str,
         created_by: str,
         expires_at: datetime,
-    ) -> dict[str, Any]:
+    ) -> dict[str, Any] | None:
+        """Atomically reserve an active door/PIN pair across API workers."""
         if self.pool is None:
             raise RuntimeError("PostgreSQL is not configured")
-        row = await self.pool.fetchrow(
-            """
-            INSERT INTO temporary_pins
-                (id, door_name, pin_code, pin_hash, target_user, created_by, expires_at)
-            VALUES ($1::uuid, $2, $3, $4, $5, $6, $7)
-            RETURNING id::text, door_name, pin_code, pin_hash, target_user,
-                      created_by, expires_at, is_active, created_at
-            """,
-            pin_id,
-            door_name,
-            pin_code,
-            pin_hash,
-            target_user,
-            created_by,
-            expires_at,
-        )
+        async with self.pool.acquire() as connection:
+            async with connection.transaction():
+                # Same-door PIN creation is rare; a transaction-scoped lock closes
+                # the check-then-insert race without serializing other doors.
+                await connection.execute(
+                    "SELECT pg_advisory_xact_lock(27183, hashtext($1))",
+                    door_name,
+                )
+                exists = await connection.fetchval(
+                    """
+                    SELECT EXISTS (
+                        SELECT 1 FROM temporary_pins
+                        WHERE door_name = $1 AND pin_hash = $2 AND is_active AND expires_at > now()
+                    )
+                    """,
+                    door_name,
+                    pin_hash,
+                )
+                if exists:
+                    return None
+                row = await connection.fetchrow(
+                    """
+                    INSERT INTO temporary_pins
+                        (id, door_name, pin_code, pin_hash, target_user, created_by, expires_at)
+                    VALUES ($1::uuid, $2, $3, $4, $5, $6, $7)
+                    RETURNING id::text, door_name, pin_code, pin_hash, target_user,
+                              created_by, expires_at, is_active, created_at
+                    """,
+                    pin_id,
+                    door_name,
+                    pin_code,
+                    pin_hash,
+                    target_user,
+                    created_by,
+                    expires_at,
+                )
+                await connection.execute(
+                    "INSERT INTO audit_logs (action, performed_by, details) VALUES ($1, $2, $3::jsonb)",
+                    "PIN_GENERATED",
+                    created_by,
+                    json.dumps(
+                        {"pin_id": row["id"], "door_name": row["door_name"], "target_user": target_user},
+                        separators=(",", ":"),
+                    ),
+                )
         return dict(row)
-
-    async def temporary_pin_hash_exists(self, door_name: str, pin_hash: str) -> bool:
-        if self.pool is None:
-            raise RuntimeError("PostgreSQL is not configured")
-        result = await self.pool.fetchval(
-            """
-            SELECT EXISTS (
-                SELECT 1 FROM temporary_pins
-                WHERE door_name = $1 AND pin_hash = $2 AND is_active AND expires_at > now()
-            )
-            """,
-            door_name,
-            pin_hash,
-        )
-        return bool(result)
 
     async def list_temporary_pins(
         self, *, limit: int = 100, include_inactive: bool = False
@@ -278,18 +293,30 @@ class PostgresService:
         )
         return [dict(row) for row in rows]
 
-    async def deactivate_temporary_pin(self, pin_id: str) -> dict[str, Any] | None:
+    async def deactivate_temporary_pin_and_audit(
+        self, pin_id: str, *, performed_by: str
+    ) -> dict[str, Any] | None:
         if self.pool is None:
             return None
-        row = await self.pool.fetchrow(
-            """
-            UPDATE temporary_pins SET is_active = false
-            WHERE id = $1::uuid AND is_active
-            RETURNING id::text, door_name, target_user, created_by, expires_at, is_active
-            """,
-            pin_id,
-        )
-        return dict(row) if row else None
+        async with self.pool.acquire() as connection:
+            async with connection.transaction():
+                row = await connection.fetchrow(
+                    """
+                    UPDATE temporary_pins SET is_active = false
+                    WHERE id = $1::uuid AND is_active
+                    RETURNING id::text, door_name, target_user, created_by, expires_at, is_active
+                    """,
+                    pin_id,
+                )
+                if row is None:
+                    return None
+                await connection.execute(
+                    "INSERT INTO audit_logs (action, performed_by, details) VALUES ($1, $2, $3::jsonb)",
+                    "PIN_REVOKED",
+                    performed_by,
+                    json.dumps({"pin_id": row["id"], "door_name": row["door_name"]}, separators=(",", ":")),
+                )
+        return dict(row)
 
     async def validate_temporary_pin(self, door_name: str, pin_hash: str) -> dict[str, Any] | None:
         if self.pool is None:
@@ -321,6 +348,11 @@ class PostgresService:
             performed_by,
             json.dumps(details or {}, separators=(",", ":")),
         )
+
+    async def current_security_mode(self) -> dict[str, Any]:
+        from backend.services.security_state import read_current_security_mode
+
+        return await read_current_security_mode(self.pool)
 
     async def write_error_log(
         self,

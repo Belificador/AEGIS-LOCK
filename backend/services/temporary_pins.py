@@ -23,28 +23,25 @@ async def generate_temporary_pin(payload: PinGenerateRequest, *, created_by: str
     settings = get_settings()
     pin_code = ""
     pin_digest = ""
+    stored = None
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=payload.duration_hours)
     for _ in range(100):
         pin_code = str(secrets.randbelow(10 ** settings.pin_code_length)).zfill(settings.pin_code_length)
         pin_digest = hash_pin(str(door["door_name"]), pin_code)
-        if not await postgres_service.temporary_pin_hash_exists(str(door["door_name"]), pin_digest):
+        stored = await postgres_service.create_temporary_pin_if_hash_available(
+            pin_id=str(uuid4()),
+            door_name=str(door["door_name"]),
+            pin_code=encrypt_pin(str(door["door_name"]), pin_code),
+            pin_hash=pin_digest,
+            target_user=payload.target_user,
+            created_by=created_by,
+            expires_at=expires_at,
+        )
+        if stored is not None:
             break
     else:
         raise HTTPException(status_code=503, detail="No se pudo generar un PIN disponible")
 
-    stored = await postgres_service.create_temporary_pin(
-        pin_id=str(uuid4()),
-        door_name=str(door["door_name"]),
-        pin_code=encrypt_pin(str(door["door_name"]), pin_code),
-        pin_hash=pin_digest,
-        target_user=payload.target_user,
-        created_by=created_by,
-        expires_at=datetime.now(timezone.utc) + timedelta(hours=payload.duration_hours),
-    )
-    await postgres_service.write_audit_log(
-        action="PIN_GENERATED",
-        performed_by=created_by,
-        details={"pin_id": stored["id"], "door_name": stored["door_name"], "target_user": payload.target_user},
-    )
     return PinGenerateResponse(
         id=stored["id"],
         door_name=stored["door_name"],
@@ -71,7 +68,9 @@ async def revoke_temporary_pin(
             selected_id = str(UUID(pin_id))
         except (TypeError, ValueError) as exc:
             raise ValueError("El ID del PIN no es válido") from exc
-        revoked = await postgres_service.deactivate_temporary_pin(selected_id)
+        revoked = await postgres_service.deactivate_temporary_pin_and_audit(
+            selected_id, performed_by=created_by
+        )
         if revoked is None:
             return {"revoked": False, "reason": "not_found"}
     else:
@@ -94,15 +93,12 @@ async def revoke_temporary_pin(
                     for pin in matches[:10]
                 ],
             }
-        revoked = await postgres_service.deactivate_temporary_pin(str(matches[0]["id"]))
+        revoked = await postgres_service.deactivate_temporary_pin_and_audit(
+            str(matches[0]["id"]), performed_by=created_by
+        )
         if revoked is None:
             return {"revoked": False, "reason": "not_found"}
 
-    await postgres_service.write_audit_log(
-        action="PIN_REVOKED",
-        performed_by=created_by,
-        details={"pin_id": revoked["id"], "door_name": revoked["door_name"]},
-    )
     return {
         "revoked": True,
         "pin_id": revoked["id"],

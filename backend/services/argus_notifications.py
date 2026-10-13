@@ -55,7 +55,12 @@ def schedule_telemetry_notices(event: dict[str, Any], alerts: list[dict[str, Any
         code = str(alert.get("code") or "CRITICAL")
         if code == "POWER_LOSS":
             continue
-        if _reserve_notice(f"alert:{code}:{source}:{zone}"):
+        if code in {"ENTRY_DURING_LOCKDOWN", "ACCESS_GRANTED_DURING_LOCKDOWN", "ACCESS_ATTEMPT_DURING_LOCKDOWN"}:
+            event_id = str(event.get("event_id") or event.get("eventId") or "unknown")
+            notice_key = f"access:{code}:{event_id}"
+        else:
+            notice_key = f"alert:{code}:{source}:{zone}"
+        if _reserve_notice(notice_key):
             selected.append({"code": code, "message": str(alert.get("message") or "Alerta crítica")[:240]})
     if selected:
         _schedule(_send_critical_alerts(source, zone, str(event.get("timestamp") or "hora no disponible"), selected))

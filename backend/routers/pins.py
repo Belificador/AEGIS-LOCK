@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 import hmac
 import logging
 from typing import Annotated, Any
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
@@ -69,20 +70,17 @@ async def list_pins(
 @router.delete("/{pin_id}")
 @limiter.limit("20/minute")
 async def revoke_pin(
-    pin_id: str,
+    pin_id: UUID,
     request: Request,
     claims: Annotated[dict[str, Any], Depends(require_admin)],
 ) -> dict[str, Any]:
-    revoked = await postgres_service.deactivate_temporary_pin(pin_id)
+    pin_id_text = str(pin_id)
+    revoked = await postgres_service.deactivate_temporary_pin_and_audit(
+        pin_id_text, performed_by=str(claims["sub"])
+    )
     if revoked is None:
         raise HTTPException(status_code=404, detail="PIN temporal no encontrado o ya revocado")
-    actor = str(claims["sub"])
-    await postgres_service.write_audit_log(
-        action="PIN_REVOKED",
-        performed_by=actor,
-        details={"pin_id": pin_id, "door_name": revoked["door_name"]},
-    )
-    return {"ok": True, "id": pin_id, "is_active": False}
+    return {"ok": True, "id": pin_id_text, "is_active": False}
 
 
 @router.post("/validate")

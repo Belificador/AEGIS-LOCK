@@ -130,6 +130,21 @@ El servidor FastAPI también incluye:
 - `POST /api/v1/chat`, Argus con OpenRouter y herramientas acotadas por rol.
 - `POST /api/v1/telegram/webhook`, Hermes para consultas privadas de usuarios
   permitidos por `TELEGRAM_USER_MAP`; usa Argus en modo de solo lectura.
+- `/ws/telemetry` compara los accesos autorizados con el último cambio de modo
+  guardado en auditoría. Un acceso concedido durante Lockdown genera una alerta
+  crítica; si el emisor incluye `metadata.access_direction=ENTRY`, el texto
+  confirma la entrada. Si la dirección falta, la alerta lo indica sin afirmar
+  que fue una entrada. Los intentos `DENIED`/`LOCKOUT` tienen un aviso separado.
+- `python -m backend.jobs.evacuation_count_report` calcula el aforo mientras la
+  última transición central siga en Evacuación. Para avisos cada dos minutos,
+  crea en Render un Cron Job con `*/2 * * * *` (UTC), comando
+  `python -m backend.jobs.evacuation_count_report` y
+  `AEGIS_SERVICE_ROLE=evacuation_cron`. Configura una base de solo lectura en
+  `ARGUS_REPORT_DATABASE_URL`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_USER_MAP` y las
+  `EVACUATION_EXPECTED_ZONES`. Si las zonas esperadas no están configuradas o
+  faltan lecturas recientes, el mensaje se marca como parcial/no disponible y
+  no presenta el subtotal como conteo completo. El conteo se envía a los chats
+  vinculados a usuarios Admin activos mediante Hermes, con texto determinista.
 - `python -m backend.jobs.daily_argus_report` genera el reporte agregado del día
   anterior; GitHub Actions lo ejecuta diariamente a las 08:00 UTC. Un Administrador
   también puede pedir desde Argus que el informe llegue a su Telegram privado vinculado.

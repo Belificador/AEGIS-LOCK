@@ -27,6 +27,19 @@ def test_argus_cron_settings_need_only_report_credentials() -> None:
     assert settings.service_role == "argus_cron"
 
 
+def test_evacuation_cron_needs_no_openrouter_key_and_parses_expected_zones() -> None:
+    settings = Settings(
+        environment="production",
+        service_role="evacuation_cron",
+        argus_report_database_url="postgresql://readonly:password@db.example.test/aegis",
+        telegram_bot_token="telegram-test-token",
+        telegram_user_map="123456789:admin",
+        evacuation_expected_zones="Recepción,Oficina L1",
+    )
+    assert settings.service_role == "evacuation_cron"
+    assert settings.evacuation_zone_names == ("Recepción", "Oficina L1")
+
+
 def test_hermes_accepts_admin_private_chat_and_calls_argus_read_only(monkeypatch) -> None:
     calls = []
 

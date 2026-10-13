@@ -6,6 +6,7 @@ import hmac
 import json
 import logging
 import time
+from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
@@ -106,15 +107,25 @@ async def telemetry_socket(websocket: WebSocket) -> None:
             alerts = evaluate_event(event)
             if event.event_type in {"acceso_pin", "access_pin"}:
                 access_value = str(raw_event.get("valor") or "").strip().upper()
-                if access_value in {"GRANTED", "DENIED", "LOCKOUT"}:
+                access_metadata = raw_event.get("metadata") if isinstance(raw_event.get("metadata"), dict) else {}
+                if access_value in {"GRANTED", "AUTHORIZED", "DENIED", "LOCKOUT"}:
                     await postgres_service.write_audit_log(
-                        action="PIN_ACCESS_GRANTED" if access_value == "GRANTED" else "PIN_ACCESS_DENIED",
+                        action="PIN_ACCESS_GRANTED" if access_value in {"GRANTED", "AUTHORIZED"} else "PIN_ACCESS_DENIED",
                         performed_by=publisher,
                         details={
                             "door_name": raw_event.get("zona", raw_event.get("zone", "GLOBAL")),
                             "result": access_value,
                         },
                     )
+                try:
+                    security_mode = await postgres_service.current_security_mode()
+                except Exception:
+                    security_mode = {"mode": "UNKNOWN"}
+                    logger.exception("No se pudo consultar el modo de seguridad para un evento de acceso")
+                if security_mode.get("mode") == "LOCKDOWN":
+                    lockdown_alert = _lockdown_access_alert(raw_event, access_value)
+                    if lockdown_alert is not None:
+                        alerts.append(lockdown_alert)
             payload = {"kind": "telemetry", "event": event_data, "alerts": alerts}
             websocket.app.state.latest_event = payload
             persisted = False
@@ -159,3 +170,32 @@ async def telemetry_socket(websocket: WebSocket) -> None:
             await websocket.close(code=1011)
         except Exception:
             pass
+
+
+def _lockdown_access_alert(raw_event: dict[str, Any], access_value: str) -> dict[str, str] | None:
+    if access_value not in {"GRANTED", "AUTHORIZED", "DENIED", "LOCKOUT"}:
+        return None
+    metadata = raw_event.get("metadata") if isinstance(raw_event.get("metadata"), dict) else {}
+    direction = str(
+        metadata.get("access_direction") or metadata.get("direction") or raw_event.get("access_direction") or ""
+    ).strip().upper()
+    if access_value in {"GRANTED", "AUTHORIZED"} and direction in {"EXIT", "SALIDA"}:
+        return None
+    zone = " ".join(str(raw_event.get("zona") or raw_event.get("zone") or "").split())[:100]
+    zone_detail = f" · Zona: {zone}" if zone else ""
+    if access_value in {"GRANTED", "AUTHORIZED"}:
+        confirmed_entry = direction in {"ENTRY", "ENTRADA"}
+        return {
+            "severity": "critical",
+            "code": "ENTRY_DURING_LOCKDOWN" if confirmed_entry else "ACCESS_GRANTED_DURING_LOCKDOWN",
+            "message": (
+                "Acaba de ingresar una persona con el Lockdown activo"
+                if confirmed_entry
+                else "Se concedió un acceso con el Lockdown activo; la dirección no fue informada"
+            ) + zone_detail,
+        }
+    return {
+        "severity": "critical",
+        "code": "ACCESS_ATTEMPT_DURING_LOCKDOWN",
+        "message": f"Intento de acceso {access_value.lower()} durante el Lockdown activo{zone_detail}",
+    }

@@ -52,6 +52,9 @@ medida de seguridad.
 PostgreSQL también conserva usuarios, sesiones de refresco, eventos,
 instantáneas, auditoría, errores y PINes temporales. La API crea el pool de
 conexiones y aplica los archivos SQL de backend/sql/ al iniciar.
+El modo de seguridad que el backend usa para correlacionar accesos se deriva de
+la transición Admin más reciente guardada en audit_logs; así sobrevive a un
+reinicio y no depende del localStorage de un navegador.
 
 El gemelo digital y su relay multimedia son servicios externos a este código.
 La configuración actual apunta a un servicio en Render. El relay entrega feeds
@@ -146,6 +149,17 @@ Reglas importantes actuales:
   - los cambios de alimentación se comparan con el último estado conocido para
     evitar avisos repetidos en cada lectura.
 
+Cuando la última transición Admin registrada es LOCKDOWN_ACTIVATED, un evento
+GRANTED/AUTHORIZED de acceso que no indique salida genera una alerta crítica.
+Si metadata.access_direction indica ENTRY/ENTRADA, usa el texto «Acaba de
+ingresar una persona con el Lockdown activo». Si la dirección falta, la alerta
+describe un acceso concedido sin afirmar que fue una entrada. DENIED/LOCKOUT
+produce un aviso separado de intento. Cada aviso de acceso se deduplica por
+event_id y se envía por Hermes a los Administradores autorizados.
+
+El modo actual de Lockdown/Evacuación sigue siendo simulado. No confirma un
+estado de controlador físico.
+
 El catálogo backend contiene nueve cámaras. El dashboard puede ocultar algunas
 de su vista sin quitarlas del catálogo backend. La API de cámaras permite a los
 perfiles de lectura permitidos pedir feeds con URL temporal firmada.
@@ -181,6 +195,15 @@ resumen del día anterior con conexión de solo lectura. La tarea necesita que e
 entorno de despliegue tenga programada su ejecución y sus secretos; revisar el
 programador activo antes de asumir que corre automáticamente.
 
+Para el aforo durante Evacuación existe backend.jobs.evacuation_count_report.
+Se configura como Render Cron con schedule `*/2 * * * *` (UTC) y
+AEGIS_SERVICE_ROLE=evacuation_cron. Consulta latest_telemetry y envía un mensaje
+determinista por Hermes a los chats enlazados con cuentas Admin activas. Define
+EVACUATION_EXPECTED_ZONES para que el conteo pueda marcarse completo; las
+lecturas más antiguas que EVACUATION_OCCUPANCY_STALE_AFTER_SECONDS se muestran
+como no disponibles. Sin zonas configuradas o con lecturas antiguas, el total
+se informa como parcial/no disponible, nunca como cero por defecto.
+
 
 7. EJECUCIÓN Y PRUEBAS
 ----------------------
@@ -213,7 +236,8 @@ Variables principales del backend:
   ALLOWED_ORIGINS, DEMO_OPERATOR_PASSWORD, DEMO_ADMIN_PASSWORD,
   GEMELO_MEDIA_BASE_URL, OPENROUTER_API_KEY, OPENROUTER_MODEL,
   TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET, TELEGRAM_USER_MAP,
-  ARGUS_REPORT_DATABASE_URL y ARGUS_REPORT_TIMEZONE.
+  ARGUS_REPORT_DATABASE_URL, ARGUS_REPORT_TIMEZONE,
+  EVACUATION_EXPECTED_ZONES y EVACUATION_OCCUPANCY_STALE_AFTER_SECONDS.
 
 Usar siempre placeholders al compartir comandos. No colocar DATABASE_URL ni
 claves de servicio en el frontend. Configurar en Render la URL interna de la
@@ -277,6 +301,14 @@ Falsos avisos de pérdida eléctrica y trabajo repetido en cada lectura
   Solución: detectar transiciones reales de voltaje, sembrar el último estado
   conocido al iniciar desde datos persistidos y no crear transición si la
   lectura falta o es inválida.
+
+PIN temporal duplicado ante solicitudes simultáneas o auditoría parcial
+  Problema: verificar que un PIN no existía y luego insertarlo en operaciones
+  separadas dejaba una carrera entre peticiones; registrar la auditoría aparte
+  también podía dejar el PIN creado aunque fallara su registro de auditoría.
+  Solución: reservar el par puerta/hash con un advisory lock transaccional,
+  reintentar una colisión y guardar generación/revocación junto con su auditoría
+  en la misma transacción de PostgreSQL.
 
 Notificaciones externas podían retrasar el ACK de telemetría
   Problema: Telegram es una red externa y su respuesta no debe bloquear la
