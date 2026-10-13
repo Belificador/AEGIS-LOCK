@@ -7,28 +7,32 @@ const MODE_KEY = "aegis.localMode.v1";
 export function mountSecurityControls(root, { role, onModeChange, onOpenCamera, tacticalDockRoot }) {
   const isAdmin = role === "admin";
   root.innerHTML = `
-    <section class="panel-card security-panel" aria-labelledby="security-title">
-      <div class="panel-heading"><span id="security-title">Control de seguridad</span><small>SIM / LOCAL</small></div>
-      <div class="security-mode-banner"><i class="status-led led-warning"></i><span><small>ESTADO ACTUAL</small><strong>SIMULACIÓN LOCAL</strong></span><b>DEMO</b></div>
-      <p class="security-subtitle">Protocolos tácticos de demostración. Sin conexión a cerraduras ni actuadores.</p>
-      <div class="schedule-block">
-        <div class="panel-heading schedule-heading"><span>Cierre de jornada</span><small>CIERRE PROGRAMADO</small></div>
-        <div class="schedule-row"><label class="visually-hidden" for="close-time">Hora de cierre</label><input id="close-time" type="time" value="18:00" /><button id="schedule-toggle" class="schedule-button" type="button">PROGRAMAR CIERRE</button></div>
-        <p id="schedule-status" class="schedule-status">Sin cierre automático programado.</p>
-      </div>
-      <button id="release-system" class="release-button" type="button">LIBERAR / VOLVER A NORMAL</button>
-      <p class="mode-simulation-note">PROTOTIPO LOCAL · SIN CONTROL DE ACCESO FÍSICO</p>
-    </section>
-    <section class="panel-card selected-camera-panel" aria-labelledby="selected-camera-title">
-      <div class="panel-heading"><span id="selected-camera-title">Canales de cámara</span><small id="camera-channel-state">ESPERANDO MODELO</small></div>
-      <div id="camera-channel-list" class="camera-channel-list" aria-label="Canales disponibles"></div>
-      <button id="selected-camera-preview" class="selected-camera-player" type="button" disabled aria-label="Abrir cámara seleccionada">
-        <video id="selected-camera-video" autoplay muted playsinline loop crossorigin="anonymous" hidden></video>
-        <div class="camera-placeholder" aria-hidden="true"><i></i><span></span><span></span><span></span></div>
-        <div class="camera-preview-overlay"><span class="camera-preview-live"><i class="status-led led-offline"></i><b id="camera-preview-state">SIN SEÑAL</b></span><strong id="camera-preview-name">Selecciona una cámara</strong><time id="camera-preview-time">--:--:--</time></div>
-      </button>
-      <p class="camera-side-location">Modelo no conectado. Los canales aparecerán al recibir telemetría real.</p>
-    </section>`;
+    <div class="sidebar-right-slide security-slide">
+      <section class="panel-card security-panel" aria-labelledby="security-title">
+        <div class="panel-heading"><span id="security-title">Control de seguridad</span><small>SIM / LOCAL</small></div>
+        <div class="security-mode-banner"><i class="status-led led-warning"></i><span><small>ESTADO ACTUAL</small><strong>SIMULACIÓN LOCAL</strong></span><b>DEMO</b></div>
+        <p class="security-subtitle">Protocolos tácticos de demostración. Sin conexión a cerraduras ni actuadores.</p>
+        <div class="schedule-block">
+          <div class="panel-heading schedule-heading"><span>Cierre de jornada</span><small>CIERRE PROGRAMADO</small></div>
+          <div class="schedule-row"><label class="visually-hidden" for="close-time">Hora de cierre</label><input id="close-time" type="time" value="18:00" /><button id="schedule-toggle" class="schedule-button" type="button">PROGRAMAR CIERRE</button></div>
+          <p id="schedule-status" class="schedule-status">Sin cierre automático programado.</p>
+        </div>
+        <button id="release-system" class="release-button" type="button">LIBERAR / VOLVER A NORMAL</button>
+        <p class="mode-simulation-note">PROTOTIPO LOCAL · SIN CONTROL DE ACCESO FÍSICO</p>
+      </section>
+    </div>
+    <div class="sidebar-right-slide camera-slide">
+      <section class="panel-card selected-camera-panel" aria-labelledby="selected-camera-title">
+        <div class="panel-heading"><span id="selected-camera-title">Canales de cámara</span><small id="camera-channel-state">ESPERANDO MODELO</small></div>
+        <div id="camera-channel-list" class="camera-channel-list" aria-label="Canales disponibles"></div>
+        <button id="selected-camera-preview" class="selected-camera-player" type="button" disabled aria-label="Abrir cámara seleccionada">
+          <video id="selected-camera-video" autoplay muted playsinline loop crossorigin="anonymous" hidden></video>
+          <div class="camera-placeholder" aria-hidden="true"><i></i><span></span><span></span><span></span></div>
+          <div class="camera-preview-overlay"><span class="camera-preview-live"><i class="status-led led-offline"></i><b id="camera-preview-state">SIN SEÑAL</b></span><strong id="camera-preview-name">Selecciona una cámara</strong><time id="camera-preview-time">--:--:--</time></div>
+        </button>
+        <p class="camera-side-location">Modelo no conectado. Los canales aparecerán al recibir telemetría real.</p>
+      </section>
+    </div>`;
 
   const scheduleInput = root.querySelector("#close-time");
   const toggle = root.querySelector("#schedule-toggle");
