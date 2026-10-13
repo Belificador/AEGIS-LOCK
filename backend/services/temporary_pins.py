@@ -2,7 +2,7 @@
 
 from datetime import datetime, timedelta, timezone
 import secrets
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import HTTPException
 
@@ -54,3 +54,58 @@ async def generate_temporary_pin(payload: PinGenerateRequest, *, created_by: str
         expires_at=stored["expires_at"],
         is_active=stored["is_active"],
     )
+
+
+async def revoke_temporary_pin(
+    *,
+    created_by: str,
+    pin_id: str | None = None,
+    door_name: str | None = None,
+    target_user: str | None = None,
+) -> dict[str, object]:
+    if postgres_service.pool is None:
+        raise HTTPException(status_code=503, detail="PostgreSQL no está disponible")
+
+    if pin_id:
+        try:
+            selected_id = str(UUID(pin_id))
+        except (TypeError, ValueError) as exc:
+            raise ValueError("El ID del PIN no es válido") from exc
+        revoked = await postgres_service.deactivate_temporary_pin(selected_id)
+        if revoked is None:
+            return {"revoked": False, "reason": "not_found"}
+    else:
+        door = canonical_door(door_name or "")
+        if door is None or not target_user or not target_user.strip():
+            raise ValueError("Argus necesita una puerta y el nombre asignado para buscar el PIN")
+        matches = [
+            pin for pin in await postgres_service.list_temporary_pins(limit=200)
+            if pin["door_name"] == door["door_name"]
+            and str(pin["target_user"]).strip().casefold() == target_user.strip().casefold()
+        ]
+        if not matches:
+            return {"revoked": False, "reason": "not_found"}
+        if len(matches) > 1:
+            return {
+                "revoked": False,
+                "ambiguous": True,
+                "matches": [
+                    {"pin_id": pin["id"], "expires_at": pin["expires_at"].isoformat()}
+                    for pin in matches[:10]
+                ],
+            }
+        revoked = await postgres_service.deactivate_temporary_pin(str(matches[0]["id"]))
+        if revoked is None:
+            return {"revoked": False, "reason": "not_found"}
+
+    await postgres_service.write_audit_log(
+        action="PIN_REVOKED",
+        performed_by=created_by,
+        details={"pin_id": revoked["id"], "door_name": revoked["door_name"]},
+    )
+    return {
+        "revoked": True,
+        "pin_id": revoked["id"],
+        "door_name": revoked["door_name"],
+        "expires_at": revoked["expires_at"].isoformat(),
+    }

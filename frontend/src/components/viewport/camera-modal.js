@@ -1,4 +1,5 @@
 import { CAMERA_STREAMS } from "./camera-config.js";
+import { isCameraHidden } from "./camera-visibility.js";
 
 const AUTH_URL = import.meta.env.VITE_AUTH_API_URL || "https://aegis-lock-api.onrender.com/api/login";
 const API_ROOT = AUTH_URL.replace(/\/(?:api\/login|api\/v1\/auth\/login)\/?$/, "");
@@ -83,6 +84,7 @@ export function createCameraModal({ session, cameras = [], onAvailability = () =
 
   async function open(camera, streamUrlOverride) {
     const cameraId = String(camera.cameraId || camera.id);
+    if (isCameraHidden(cameraId)) return null;
     let index = channels.findIndex((entry) => entry.id === cameraId);
     if (index < 0) {
       channels.push(normalizeCamera({ ...camera, id: cameraId, cameraId }));

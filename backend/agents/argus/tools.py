@@ -2,8 +2,9 @@
 
 import json
 from typing import Any
+from uuid import UUID
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from backend.agents.argus.reporting import get_activity_summary, get_current_status
 from backend.models.schemas import PinGenerateRequest, StrictModel
@@ -27,6 +28,21 @@ class CameraArguments(StrictModel):
 
 class TelegramReportArguments(StrictModel):
     days: int = Field(default=1, ge=1, le=7, strict=True)
+
+
+class PinRevokeArguments(StrictModel):
+    pin_id: UUID | None = None
+    door_name: str | None = Field(default=None, min_length=2, max_length=80)
+    target_user: str | None = Field(default=None, min_length=2, max_length=120)
+
+    @model_validator(mode="after")
+    def validate_pin_selector(self) -> "PinRevokeArguments":
+        if self.pin_id is not None:
+            if self.door_name is not None or self.target_user is not None:
+                raise ValueError("Usa el ID del PIN o la puerta y el nombre asignado, no ambos")
+        elif not self.door_name or not self.target_user:
+            raise ValueError("Indica el ID del PIN o una puerta y el nombre asignado")
+        return self
 
 
 TOOLS: list[dict[str, Any]] = [
@@ -97,6 +113,22 @@ TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "revoke_temporary_pin",
+            "description": "Revoca un PIN temporal. Busca por puerta y nombre asignado; si hay varios, pide al Administrador que seleccione el ID. También acepta un ID exacto.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "pin_id": {"type": "string", "format": "uuid"},
+                    "door_name": {"type": "string", "minLength": 2, "maxLength": 80},
+                    "target_user": {"type": "string", "minLength": 2, "maxLength": 120},
+                },
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "send_report_to_telegram",
             "description": "Envía un informe agregado al Telegram privado vinculado al Administrador. Solo cuando se lo pida explícitamente desde el dashboard.",
             "parameters": {
@@ -115,6 +147,7 @@ def tools_for_role(
     *,
     channel: str | None = None,
     allow_temporary_pin: bool = False,
+    allow_temporary_pin_revocation: bool = False,
     allow_telegram_report: bool = False,
 ) -> list[dict[str, Any]]:
     available = []
@@ -122,6 +155,10 @@ def tools_for_role(
         name = tool["function"]["name"]
         if name == "generate_temporary_pin" and (
             role != "admin" or channel == "telegram" or not allow_temporary_pin
+        ):
+            continue
+        if name == "revoke_temporary_pin" and (
+            role != "admin" or channel == "telegram" or not allow_temporary_pin_revocation
         ):
             continue
         if name == "send_report_to_telegram" and (
@@ -138,6 +175,7 @@ async def run_tool(
     claims: dict[str, Any],
     *,
     allow_temporary_pin: bool = False,
+    allow_temporary_pin_revocation: bool = False,
     allow_telegram_report: bool = False,
 ) -> tuple[dict[str, Any], dict[str, Any] | None]:
     try:
@@ -179,6 +217,22 @@ async def run_tool(
             "expires_at": pin.expires_at.isoformat(),
         }
         return public_result, private_result
+    if name == "revoke_temporary_pin":
+        if (
+            claims.get("role") != "admin"
+            or claims.get("channel") == "telegram"
+            or not allow_temporary_pin_revocation
+        ):
+            raise PermissionError("Solo un Administrador desde AEGIS puede revocar PINes temporales")
+        request = PinRevokeArguments.model_validate(arguments)
+        from backend.services.temporary_pins import revoke_temporary_pin
+
+        return await revoke_temporary_pin(
+            created_by=str(claims.get("sub", "admin")),
+            pin_id=str(request.pin_id) if request.pin_id else None,
+            door_name=request.door_name,
+            target_user=request.target_user,
+        ), None
     if name == "send_report_to_telegram":
         if claims.get("role") != "admin" or claims.get("channel") == "telegram" or not allow_telegram_report:
             raise PermissionError("El envío requiere una solicitud explícita de Administrador desde AEGIS")

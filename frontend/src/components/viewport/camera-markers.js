@@ -1,8 +1,9 @@
 import NAV_GRID from "../../../../models_3d/nav/navgrid.json";
+import { isCameraHidden } from "./camera-visibility.js";
 
 // Los nodos Sphere.* del GLB son luminarias. Estos marcadores explícitos se
 // anclan a las zonas del navgrid y se mantienen editables por cámara.
-export const CAMERA_MARKERS = Object.freeze([
+const ALL_CAMERA_MARKERS = [
   { cameraId: "CAM_01_GERENCIA", zone: "Administración", zoneId: 3, offset: [0, 0] },
   { cameraId: "CAM_02_CONFERENCIAS", zone: "Sala de Conferencias (aprox.)", zoneId: 4, offset: [-1.5, -1.6] },
   { cameraId: "CAM_03_OFICINA_L1", zone: "Oficina L1", zoneId: 1, offset: [0, 0] },
@@ -12,7 +13,10 @@ export const CAMERA_MARKERS = Object.freeze([
   { cameraId: "CAM_07_PASILLO_SUR", zone: "Pasillo sur", zoneId: 0, offset: [0, 4.2] },
   { cameraId: "CAM_08_RECEPCION", zone: "Recepción", zoneId: 4, offset: [1.4, 1.5] },
   { cameraId: "CAM_09_OFICINA_L3", zone: "Oficina L3", zoneId: 5, offset: [0, 0] },
-]);
+];
+
+// Estas cámaras siguen en el catálogo backend, pero no se muestran en este dashboard.
+export const CAMERA_MARKERS = Object.freeze(ALL_CAMERA_MARKERS.filter((camera) => !isCameraHidden(camera.cameraId)));
 
 export function addCameraMarkers(THREE, model, displayScale, onSelect) {
   const zones = new Map((NAV_GRID.zones || []).map((zone) => [zone.id, zone]));

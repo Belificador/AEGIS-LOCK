@@ -1,4 +1,5 @@
 import { CAMERA_MARKERS } from "../viewport/camera-markers.js";
+import { isCameraHidden } from "../viewport/camera-visibility.js";
 
 const SCHEDULE_KEY = "aegis.closeSchedule.v1";
 const MODE_KEY = "aegis.localMode.v1";
@@ -173,7 +174,8 @@ export function mountSecurityControls(root, { role, onModeChange, onOpenCamera, 
   function updateCamera(event) {
     const metadata = event.metadata || {};
     const camera = metadata.camera && typeof metadata.camera === "object" ? metadata.camera : {};
-    const id = metadata.camera_id || metadata.cameraId || camera.id || event.valor || "EXT";
+    const id = String(metadata.camera_id || metadata.cameraId || camera.id || event.valor || "EXT");
+    if (isCameraHidden(id)) return;
     const location = metadata.location || metadata.ubicacion || camera.location || event.zona || "Ubicación recibida del emisor";
     const feedUrl = metadata.feed_url || metadata.stream_url || metadata.video_url || metadata.feed;
     selectedCameraId = id;

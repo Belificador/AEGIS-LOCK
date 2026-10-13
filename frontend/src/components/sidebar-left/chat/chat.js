@@ -21,6 +21,13 @@ export function mountChat(root, session) {
   const thread = root.querySelector("#chat-thread");
   const form = root.querySelector("#assistant-form");
   const input = root.querySelector("#assistant-message");
+  const greeting = document.createElement("div");
+  const username = String(session?.user?.username || "").trim();
+  greeting.className = "chat-message is-assistant chat-welcome";
+  greeting.textContent = username
+    ? `Hola, ${username}. Soy Argus. Puedo consultar el estado, la actividad y las cámaras de AEGIS.`
+    : "Hola, soy Argus. Puedo consultar el estado, la actividad y las cámaras de AEGIS.";
+  thread.replaceChildren(greeting);
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
